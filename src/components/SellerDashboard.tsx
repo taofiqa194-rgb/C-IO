@@ -238,11 +238,11 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
         </div>
 
         {/* Dashboard navigation buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
           <button
             id="seller-tab-upload"
             onClick={() => setActiveTab('upload')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold transition ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold shrink-0 whitespace-nowrap transition ${
               activeTab === 'upload'
                 ? 'bg-[#5A5A40] text-white shadow-xs'
                 : 'bg-[#F5F5F0] text-[#2D2D2A] hover:bg-[#E8E8DF] border border-[#E0E0D5]'
@@ -255,7 +255,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
           <button
             id="seller-tab-listings"
             onClick={() => setActiveTab('listings')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold transition ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold shrink-0 whitespace-nowrap transition ${
               activeTab === 'listings'
                 ? 'bg-[#5A5A40] text-white shadow-xs'
                 : 'bg-[#F5F5F0] text-[#2D2D2A] hover:bg-[#E8E8DF] border border-[#E0E0D5]'

@@ -286,7 +286,7 @@ export default function App() {
   }, [listings]);
 
   return (
-    <div className="min-h-screen bg-[#F5F5F0] text-[#2D2D2A] flex flex-col font-sans pb-20 md:pb-10 selection:bg-[#E8E8DF] selection:text-[#2D2D2A]">
+    <div className="min-h-screen bg-[#F5F5F0] text-[#2D2D2A] flex flex-col font-sans pb-24 md:pb-10 selection:bg-[#E8E8DF] selection:text-[#2D2D2A]">
       {/* Sticky Navbar */}
       <Navbar
         currentUser={currentUser}
@@ -376,14 +376,14 @@ export default function App() {
             )}
 
             {/* Horizontal Scrollable Category Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 no-scrollbar text-xs">
               <button
                 id="cat-pill-all"
                 onClick={() => {
                   setActiveCategoryPill('All');
                   if (activeView === 'subscriptions') setActiveView('feed');
                 }}
-                className={`px-4 py-2 rounded-full whitespace-nowrap font-medium transition ${
+                className={`px-3.5 py-1.5 rounded-full whitespace-nowrap font-medium shrink-0 transition ${
                   activeCategoryPill === 'All' && activeView !== 'subscriptions'
                     ? 'bg-[#5A5A40] text-white shadow-xs font-bold'
                     : 'bg-white border border-[#E0E0D5] text-[#2D2D2A] hover:bg-[#E8E8DF]'
@@ -399,7 +399,7 @@ export default function App() {
                   setActiveCategoryPill('Subscriptions & Digital');
                   setActiveView('subscriptions');
                 }}
-                className={`px-4 py-2 rounded-full whitespace-nowrap font-medium transition flex items-center gap-1.5 ${
+                className={`px-3.5 py-1.5 rounded-full whitespace-nowrap font-medium shrink-0 transition flex items-center gap-1.5 ${
                   activeView === 'subscriptions' || activeCategoryPill === 'Subscriptions & Digital'
                     ? 'bg-[#5A5A40] text-white shadow-xs font-bold'
                     : 'bg-[#E8E8DF] border border-[#E0E0D5] text-[#5A5A40] hover:bg-[#D9D9C8]'
@@ -415,7 +415,7 @@ export default function App() {
                     setActiveCategoryPill(cat);
                     if (activeView === 'subscriptions') setActiveView('feed');
                   }}
-                  className={`px-4 py-2 rounded-full whitespace-nowrap font-medium transition ${
+                  className={`px-3.5 py-1.5 rounded-full whitespace-nowrap font-medium shrink-0 transition ${
                     activeCategoryPill === cat && activeView !== 'subscriptions'
                       ? 'bg-[#5A5A40] text-white shadow-xs font-bold'
                       : 'bg-white border border-[#E0E0D5] text-[#2D2D2A] hover:bg-[#E8E8DF]'

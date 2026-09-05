@@ -153,11 +153,11 @@ export const SupportSection: React.FC<SupportSectionProps> = ({
       </div>
 
       {/* Navigation Tabs */}
-      <div className="mt-6 flex items-center gap-2 border-b border-[#E0E0D5] pb-3">
+      <div className="mt-6 flex items-center gap-2 border-b border-[#E0E0D5] pb-3 overflow-x-auto no-scrollbar">
         <button
           id="support-tab-help"
           onClick={() => setActiveTab('help')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition ${
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold shrink-0 whitespace-nowrap transition ${
             activeTab === 'help'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#2D2D2A] hover:bg-[#E8E8DF]'
@@ -170,7 +170,7 @@ export const SupportSection: React.FC<SupportSectionProps> = ({
         <button
           id="support-tab-ticket"
           onClick={() => setActiveTab('ticket')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition ${
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold shrink-0 whitespace-nowrap transition ${
             activeTab === 'ticket'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#2D2D2A] hover:bg-[#E8E8DF]'
@@ -183,7 +183,7 @@ export const SupportSection: React.FC<SupportSectionProps> = ({
         <button
           id="support-tab-my-tickets"
           onClick={() => setActiveTab('my-tickets')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition ${
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold shrink-0 whitespace-nowrap transition ${
             activeTab === 'my-tickets'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#2D2D2A] hover:bg-[#E8E8DF]'
