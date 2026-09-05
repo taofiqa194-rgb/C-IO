@@ -16,6 +16,7 @@ import {
   addDoc, 
   updateDoc, 
   deleteDoc, 
+  deleteField,
   onSnapshot, 
   query, 
   where, 
@@ -26,6 +27,45 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './config';
 import { User, Listing, ComplaintTicket, PlatformSettings, UserRole } from '../types';
 import { OFFICIAL_SUPPORT_PHONE, OFFICIAL_SUPPORT_WHATSAPP } from '../data/mockData';
+
+/**
+ * Recursively strips undefined values from an object or array before passing to Firestore.
+ * Firestore setDoc(), addDoc(), and updateDoc() reject `undefined` values with:
+ * "Function setDoc() called with invalid data. Unsupported field value: undefined"
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object') {
+    // Preserve Firestore sentinels (deleteField, increment, serverTimestamp) and Date instances
+    if (
+      data instanceof Date ||
+      (data.constructor &&
+        (data.constructor.name === 'FieldValue' ||
+         data.constructor.name === 'Timestamp' ||
+         data.constructor.name === 'GeoPoint' ||
+         data.constructor.name === 'Bytes')) ||
+      ('_methodName' in (data as Record<string, any>))
+    ) {
+      return data;
+    }
+
+    const cleaned: Record<string, any> = {};
+    for (const [key, val] of Object.entries(data as Record<string, any>)) {
+      if (val !== undefined) {
+        cleaned[key] = sanitizeForFirestore(val);
+      }
+    }
+    return cleaned as T;
+  }
+  return data;
+}
 
 // Helper: Convert File to Base64 (fallback if Storage CORS or bucket is restricted)
 export async function fileToBase64(file: File): Promise<string> {
@@ -268,48 +308,89 @@ export async function createProductListing(
     }
   }
 
-  const extraImages: string[] = productData.additionalImages || [];
+  const extraImages: string[] = (
+    Array.isArray(productData.additionalImages) ? productData.additionalImages :
+    Array.isArray((productData as any).images) ? (productData as any).images : []
+  ).filter((url): url is string => typeof url === 'string' && url.length > 0);
+
   if (additionalFiles && additionalFiles.length > 0) {
     for (const f of additionalFiles) {
       const extraUrl = await uploadImageFile(`products/${user.uid}/${Date.now()}_extra_${f.name}`, f);
-      extraImages.push(extraUrl);
+      if (extraUrl) extraImages.push(extraUrl);
     }
   }
 
   const newDocRef = doc(collection(db, 'products'));
-  const newProduct: Listing = {
+
+  // Ensure safe, validated price
+  const parsedPrice = Number(productData.price);
+  const safePrice = !isNaN(parsedPrice) && parsedPrice >= 0 ? parsedPrice : 0;
+
+  // Safe handling of originalPrice:
+  // ONLY attach if provided and is a valid positive number. Otherwise DO NOT attach to the document.
+  let safeOriginalPrice: number | undefined = undefined;
+  if (
+    productData.originalPrice !== undefined && 
+    productData.originalPrice !== null && 
+    productData.originalPrice !== ('' as any)
+  ) {
+    const parsedOriginal = Number(productData.originalPrice);
+    if (!isNaN(parsedOriginal) && parsedOriginal > 0) {
+      safeOriginalPrice = parsedOriginal;
+    }
+  }
+
+  const campusLocationValue = 
+    productData.campusLocation?.trim() || 
+    (productData as any).location?.trim() || 
+    'Hostel A, Mini Campus';
+
+  const newProductPayload: Record<string, any> = {
     id: newDocRef.id,
-    title: productData.title || 'Untitled Listing',
-    price: Number(productData.price) || 0,
-    originalPrice: productData.originalPrice ? Number(productData.originalPrice) : undefined,
+    title: productData.title?.trim() || 'Untitled Listing',
+    price: safePrice,
     category: productData.category || 'Phones & Gadgets',
-    description: productData.description || '',
+    description: productData.description?.trim() || '',
     imageUrl: mainImageUrl,
     additionalImages: extraImages,
+    images: [mainImageUrl, ...extraImages],
     sellerId: user.uid,
-    sellerName: productData.sellerName || user.displayName || 'Campus Seller',
-    sellerPhone: productData.sellerPhone || OFFICIAL_SUPPORT_PHONE,
+    sellerName: productData.sellerName?.trim() || user.displayName || 'Campus Seller',
+    sellerPhone: productData.sellerPhone?.trim() || OFFICIAL_SUPPORT_PHONE,
     sellerRole: productData.sellerRole || 'student',
-    sellerMatricVerified: productData.sellerMatricVerified || false,
+    sellerMatricVerified: Boolean(productData.sellerMatricVerified),
     sellerMatricNumber: productData.sellerMatricNumber || '',
     sellerBusinessName: productData.sellerBusinessName || '',
-    sellerBusinessVerified: productData.sellerBusinessVerified || false,
-    campusLocation: productData.campusLocation || 'Hostel A, Mini Campus',
+    sellerBusinessVerified: Boolean(productData.sellerBusinessVerified),
+    campus: 'University of Ilorin Mini Campus',
+    campusLocation: campusLocationValue,
+    location: campusLocationValue,
     condition: productData.condition || 'Like New',
-    isSubscription: productData.isSubscription || false,
-    subscriptionDuration: productData.subscriptionDuration,
-    isFeatured: productData.isFeatured || false,
+    isSubscription: Boolean(productData.isSubscription),
+    isFeatured: Boolean(productData.isFeatured),
     isSold: false,
     isExpired: false,
     isApproved: true,
+    status: 'active',
     viewsCount: 1,
     inquiriesCount: 0,
-    createdAt: new Date().toISOString().split('T')[0],
-    tags: productData.tags || [],
+    createdAt: productData.createdAt || new Date().toISOString().split('T')[0],
+    tags: Array.isArray(productData.tags) ? productData.tags.filter(Boolean) : [],
   };
 
-  await setDoc(newDocRef, newProduct);
-  return newProduct;
+  // Only attach originalPrice if seller entered a valid positive number
+  if (safeOriginalPrice !== undefined) {
+    newProductPayload.originalPrice = safeOriginalPrice;
+  }
+
+  // Only attach subscriptionDuration if subscription is active and specified
+  if (productData.isSubscription && productData.subscriptionDuration) {
+    newProductPayload.subscriptionDuration = productData.subscriptionDuration;
+  }
+
+  const safeData = sanitizeForFirestore(newProductPayload);
+  await setDoc(newDocRef, safeData);
+  return safeData as Listing;
 }
 
 export async function updateProductListing(
@@ -317,12 +398,99 @@ export async function updateProductListing(
   updates: Partial<Listing>,
   newImageFile?: File
 ): Promise<void> {
-  const updatePayload: Record<string, any> = { ...updates };
+  const updatePayload: Record<string, any> = {};
 
+  if (updates.title !== undefined) updatePayload.title = updates.title.trim();
+  if (updates.price !== undefined) {
+    const num = Number(updates.price);
+    updatePayload.price = !isNaN(num) && num >= 0 ? num : 0;
+  }
+
+  // Safe handling of originalPrice during updates:
+  // If explicitly specified in updates:
+  // - valid positive number => update to that number
+  // - empty, null, undefined, or <= 0 => deleteField() so it's cleanly removed from Firestore
+  if ('originalPrice' in updates) {
+    if (
+      updates.originalPrice === undefined || 
+      updates.originalPrice === null || 
+      updates.originalPrice === ('' as any) || 
+      isNaN(Number(updates.originalPrice)) || 
+      Number(updates.originalPrice) <= 0
+    ) {
+      updatePayload.originalPrice = deleteField();
+    } else {
+      updatePayload.originalPrice = Number(updates.originalPrice);
+    }
+  }
+
+  if (updates.description !== undefined) updatePayload.description = updates.description.trim();
+  if (updates.category !== undefined) updatePayload.category = updates.category;
+
+  if (updates.campusLocation !== undefined) {
+    updatePayload.campusLocation = updates.campusLocation;
+    updatePayload.location = updates.campusLocation;
+    updatePayload.campus = 'University of Ilorin Mini Campus';
+  } else if ((updates as any).location !== undefined) {
+    updatePayload.campusLocation = (updates as any).location;
+    updatePayload.location = (updates as any).location;
+  }
+
+  if ((updates as any).campus !== undefined) {
+    updatePayload.campus = (updates as any).campus;
+  }
+
+  if (updates.condition !== undefined) updatePayload.condition = updates.condition;
+  if (updates.isSubscription !== undefined) updatePayload.isSubscription = Boolean(updates.isSubscription);
+  if (updates.subscriptionDuration !== undefined) {
+    if (updates.subscriptionDuration) {
+      updatePayload.subscriptionDuration = updates.subscriptionDuration;
+    } else {
+      updatePayload.subscriptionDuration = deleteField();
+    }
+  }
+
+  if (updates.isFeatured !== undefined) updatePayload.isFeatured = Boolean(updates.isFeatured);
+  if (updates.isSold !== undefined) {
+    updatePayload.isSold = Boolean(updates.isSold);
+    updatePayload.status = updates.isSold ? 'sold' : 'active';
+  }
+  if (updates.isExpired !== undefined) updatePayload.isExpired = Boolean(updates.isExpired);
+  if (updates.isApproved !== undefined) updatePayload.isApproved = Boolean(updates.isApproved);
+  if ((updates as any).status !== undefined) updatePayload.status = (updates as any).status;
+  if (updates.sellerName !== undefined) updatePayload.sellerName = updates.sellerName.trim();
+  if (updates.sellerPhone !== undefined) updatePayload.sellerPhone = updates.sellerPhone.trim();
+
+  if (updates.imageUrl !== undefined) updatePayload.imageUrl = updates.imageUrl;
+  if (updates.additionalImages !== undefined) {
+    updatePayload.additionalImages = Array.isArray(updates.additionalImages)
+      ? updates.additionalImages.filter(Boolean)
+      : [];
+    if (updatePayload.imageUrl) {
+      updatePayload.images = [updatePayload.imageUrl, ...updatePayload.additionalImages];
+    }
+  }
+  if (updates.tags !== undefined) {
+    updatePayload.tags = Array.isArray(updates.tags) ? updates.tags.filter(Boolean) : [];
+  }
+
+  // Preserve any other safe properties explicitly set without undefined
+  for (const [key, val] of Object.entries(updates)) {
+    if (!(key in updatePayload)) {
+      if (val !== undefined) {
+        updatePayload[key] = val;
+      }
+    }
+  }
+
+  // Image handling if file uploaded
   if (newImageFile) {
     const user = auth.currentUser;
     const uid = user ? user.uid : 'admin';
     updatePayload.imageUrl = await uploadImageFile(`products/${uid}/${Date.now()}_${newImageFile.name}`, newImageFile);
+    if (updatePayload.additionalImages) {
+      updatePayload.images = [updatePayload.imageUrl, ...updatePayload.additionalImages];
+    }
   } else if (updatePayload.imageUrl && typeof updatePayload.imageUrl === 'string' && updatePayload.imageUrl.startsWith('data:image/')) {
     try {
       const user = auth.currentUser;
@@ -337,7 +505,8 @@ export async function updateProductListing(
     }
   }
 
-  await updateDoc(doc(db, 'products', productId), updatePayload);
+  const safePayload = sanitizeForFirestore(updatePayload);
+  await updateDoc(doc(db, 'products', productId), safePayload);
 }
 
 export async function deleteProductListing(productId: string): Promise<void> {
@@ -419,7 +588,7 @@ export async function submitSupportComplaint(data: Partial<ComplaintTicket>): Pr
     createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
   };
 
-  await setDoc(newDocRef, ticket);
+  await setDoc(newDocRef, sanitizeForFirestore(ticket));
   return ticket;
 }
 

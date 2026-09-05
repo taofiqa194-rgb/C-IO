@@ -321,12 +321,7 @@ export const api = {
     statusData: { isExpired?: boolean; isSold?: boolean; isFeatured?: boolean; isApproved?: boolean }, 
     _isAdmin = false
   ): Promise<Listing> {
-    if (statusData.isSold !== undefined) {
-      await toggleProductListingSold(id, statusData.isSold);
-    }
-    if (statusData.isFeatured !== undefined) {
-      await toggleProductListingFeatured(id, statusData.isFeatured);
-    }
+    await updateProductListing(id, statusData);
     const snap = await getDoc(doc(db, 'products', id));
     if (!snap.exists()) throw new Error('Product not found');
     return { ...snap.data(), id: snap.id } as Listing;
