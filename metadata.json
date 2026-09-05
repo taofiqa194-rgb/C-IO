@@ -1,0 +1,6 @@
+{
+  "name": "C'IO — University of Ilorin Mini Campus Marketplace",
+  "description": "The official University of Ilorin Mini Campus Marketplace. Buy and sell student essentials, gadgets, textbooks, and services with verified student accounts, dedicated customer support, and direct WhatsApp ordering.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,18 @@
+{
+  "users": [],
+  "products": [],
+  "complaints": [],
+  "admin": {
+    "username": "admin",
+    "email": "admin@unilorinmini.edu.ng",
+    "passwordHash": "5ccb91145d9fe39f9a6015a144c82b27d26c9761b04489e6cae2d13e2d3b4b76791a88f26e05b055b0d6a5530c2d2247e8c7840a3e554a0d3e78dccafeb7a568",
+    "passwordSalt": "6a4f3b520bedf9291c7c07c357c69ae8",
+    "lastUpdated": "2026-09-05T01:10:43.989Z"
+  },
+  "settings": {
+    "siteName": "C'IO — University of Ilorin Mini Campus Marketplace",
+    "officialPhone": "09076930244",
+    "listingModerationEnabled": false,
+    "registrationEnabled": true
+  }
+}

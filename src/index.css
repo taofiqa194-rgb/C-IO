@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Newsreader", Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --color-natural-bg: #F5F5F0;
+  --color-natural-card: #FFFFFF;
+  --color-natural-border: #E0E0D5;
+  --color-natural-primary: #5A5A40;
+  --color-natural-primary-hover: #474732;
+  --color-natural-secondary: #D9D9C8;
+  --color-natural-muted: #7A7A6A;
+  --color-natural-subtle: #A0A090;
+  --color-natural-text: #2D2D2A;
+  --color-natural-surface: #E8E8DF;
+}
+
+body {
+  background-color: #F5F5F0;
+  color: #2D2D2A;
+  font-family: var(--font-sans);
+}
