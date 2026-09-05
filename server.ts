@@ -6,6 +6,7 @@ import { createServer as createViteServer } from 'vite';
 
 const PORT = 3000;
 const DB_FILE = path.join(process.cwd(), 'data', 'db.json');
+const PRIMARY_ADMIN_EMAIL = process.env.PRIMARY_ADMIN_EMAIL || 'hammedolawumiolawumi@gmail.com';
 
 // Ensure data directory exists
 if (!fs.existsSync(path.join(process.cwd(), 'data'))) {
@@ -120,11 +121,11 @@ function loadDB(): DBData {
       if (!parsed.users) parsed.users = [];
       if (!parsed.products) parsed.products = [];
       if (!parsed.complaints) parsed.complaints = [];
-      if (!parsed.admin) {
+      if (!parsed.admin || parsed.admin.email === 'admin@unilorinmini.edu.ng') {
         const { hash, salt } = hashPassword('Admin@UnilorinMini2026!');
         parsed.admin = {
-          username: 'admin',
-          email: 'admin@unilorinmini.edu.ng',
+          username: 'cio_admin',
+          email: PRIMARY_ADMIN_EMAIL,
           passwordHash: hash,
           passwordSalt: salt,
           lastUpdated: new Date().toISOString(),
@@ -151,8 +152,8 @@ function loadDB(): DBData {
     products: [],
     complaints: [],
     admin: {
-      username: 'admin',
-      email: 'admin@unilorinmini.edu.ng',
+      username: 'cio_admin',
+      email: PRIMARY_ADMIN_EMAIL,
       passwordHash: hash,
       passwordSalt: salt,
       lastUpdated: new Date().toISOString(),
@@ -236,8 +237,7 @@ async function startServer() {
     const isMatch =
       (trimmedIdentifier === db.admin.username.toLowerCase() ||
         trimmedIdentifier === db.admin.email.toLowerCase() ||
-        trimmedIdentifier === 'admin' ||
-        trimmedIdentifier === '09076930244') &&
+        trimmedIdentifier === PRIMARY_ADMIN_EMAIL.toLowerCase()) &&
       verifyPassword(password, db.admin.passwordHash, db.admin.passwordSalt);
 
     if (!isMatch) {

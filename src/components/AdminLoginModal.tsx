@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../utils/api';
-import { ShieldCheck, Lock, User, AlertTriangle, CheckCircle2, ArrowRight, X } from 'lucide-react';
+import { ShieldCheck, Lock, User, AlertTriangle, ArrowRight, X } from 'lucide-react';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -79,17 +79,17 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-[#D9D9C8] mb-1.5 uppercase tracking-wider">
-              Admin Username or Email
+              Admin Email
             </label>
             <div className="relative">
               <User className="absolute left-3.5 top-3 h-4 w-4 text-[#A0A090]" />
               <input
-                type="text"
-                id="admin-username-input"
+                type="email"
+                id="admin-email-input"
                 required
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="e.g. admin"
+                placeholder="Enter administrator email"
                 className="w-full rounded-2xl border border-[#5A5A40]/50 bg-[#1F1F1D] pl-10 pr-4 py-2.5 text-xs sm:text-sm text-white placeholder:text-[#7A7A6A] focus:border-[#D9D9C8] focus:outline-hidden"
               />
             </div>
@@ -97,7 +97,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
           <div>
             <label className="block text-xs font-bold text-[#D9D9C8] mb-1.5 uppercase tracking-wider">
-              Admin Password
+              Password
             </label>
             <div className="relative">
               <Lock className="absolute left-3.5 top-3 h-4 w-4 text-[#A0A090]" />

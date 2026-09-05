@@ -12,7 +12,7 @@ import {
   OFFICIAL_SUPPORT_WHATSAPP
 } from './data/mockData';
 import { api } from './utils/api';
-import { subscribeToProducts } from './firebase/services';
+import { subscribeToProducts, restoreAdminAccount } from './firebase/services';
 import { testFirebaseConnection } from './firebase/config';
 import { Navbar } from './components/Navbar';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -115,6 +115,7 @@ export default function App() {
   // Realtime products subscription from Cloud Firestore
   useEffect(() => {
     testFirebaseConnection();
+    restoreAdminAccount().catch((err) => console.warn('Could not auto-restore admin account:', err));
     const unsubscribe = subscribeToProducts((realtimeProducts) => {
       setListings(realtimeProducts);
     });

@@ -7,6 +7,8 @@ import {
   updateUserProfile,
   getUserProfile,
   checkIsAdminUser,
+  PRIMARY_ADMIN_EMAIL,
+  isPrimaryAdminEmail,
   fetchProductsOnce,
   createProductListing,
   updateProductListing,
@@ -184,13 +186,13 @@ export const api = {
   // -------------------------------------------------------------
   async adminLogin(usernameOrEmail: string, password: string): Promise<{ token: string; admin: User }> {
     const trimmed = usernameOrEmail.trim().toLowerCase();
-    const adminEmail = trimmed.includes('@') ? trimmed : 'admin@unilorinmini.edu.ng';
+    const adminEmail = trimmed.includes('@') ? trimmed : PRIMARY_ADMIN_EMAIL;
 
     try {
       const userProfile = await loginUser(adminEmail, password);
       const isAuthAdmin = checkIsAdminUser(userProfile, auth.currentUser);
 
-      if (!isAuthAdmin && userProfile.role !== 'admin') {
+      if (!isAuthAdmin && userProfile.role !== 'admin' && userProfile.role !== 'super_admin') {
         await logoutUser();
         throw new Error('Access denied: This account does not possess administrator privileges.');
       }
@@ -198,17 +200,47 @@ export const api = {
       localStorage.setItem('cio_admin_token', userProfile.id);
       return { token: userProfile.id, admin: userProfile };
     } catch (error: any) {
+      // Check server API authentication endpoint as resilient fallback
+      try {
+        const resp = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usernameOrEmail: trimmed, password }),
+        });
+        if (resp.ok) {
+          const srvData = await resp.json();
+          const fallbackAdmin: User = {
+            id: srvData.token || 'admin-local',
+            name: 'Campus Marketplace Administrator',
+            email: srvData.admin?.email || adminEmail,
+            phone: '09076930244',
+            role: 'admin',
+            campusLocation: 'University of Ilorin Mini Campus',
+            isMatricVerified: true,
+            isBusinessVerified: true,
+            isProMember: false,
+            isBanned: false,
+            createdAt: new Date().toISOString().split('T')[0],
+            avatarUrl: 'https://api.dicebear.com/7.x/initials/svg?seed=Admin',
+          };
+          localStorage.setItem('cio_admin_token', fallbackAdmin.id);
+          return { token: fallbackAdmin.id, admin: fallbackAdmin };
+        }
+      } catch {
+        // Fall through to standard error handling
+      }
+
       if (error.code === 'auth/operation-not-allowed') {
         throw new Error(
           'Email/Password sign-in is disabled in your Firebase console. Please go to Firebase Console > Authentication > Sign-in method and enable "Email/Password".'
         );
       }
       if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-        // Attempt first-time admin initialization if the admin account has not yet been provisioned in Firebase Auth
-        if (adminEmail === 'admin@unilorinmini.edu.ng') {
+        // Attempt first-time admin initialization if the primary admin account has not yet been provisioned in Firebase Auth
+        if (isPrimaryAdminEmail(adminEmail)) {
           try {
             const adminUser = await registerUser({
-              name: 'Mini Campus Marketplace Administrator',
+              name: 'Campus Marketplace Administrator',
               email: adminEmail,
               password: password,
               phone: '09076930244',
@@ -225,7 +257,7 @@ export const api = {
             }
           }
         }
-        throw new Error('Invalid administrator username/email or password. Access denied.');
+        throw new Error('Invalid administrator credentials. Access denied.');
       }
       throw new Error(error.message || 'Admin authentication failed');
     }
@@ -242,7 +274,7 @@ export const api = {
       const token = localStorage.getItem('cio_admin_token');
       if (!token) return false;
       const profile = await getUserProfile(token);
-      return profile?.role === 'admin';
+      return profile?.role === 'admin' || profile?.role === 'super_admin' || isPrimaryAdminEmail(profile?.email);
     }
     const profile = await getUserProfile(currentFbUser.uid);
     return checkIsAdminUser(profile, currentFbUser);
@@ -270,6 +302,10 @@ export const api = {
   },
 
   async suspendUser(userId: string): Promise<User> {
+    const user = await getUserProfile(userId);
+    if (user && (isPrimaryAdminEmail(user.email) || user.role === 'admin' || user.role === 'super_admin')) {
+      throw new Error('The primary administrator account cannot be suspended.');
+    }
     await setAccountBanStatus(userId, true);
     const updated = await getUserProfile(userId);
     if (!updated) throw new Error('User not found');
@@ -284,6 +320,10 @@ export const api = {
   },
 
   async deleteUser(userId: string): Promise<void> {
+    const user = await getUserProfile(userId);
+    if (user && (isPrimaryAdminEmail(user.email) || user.role === 'admin' || user.role === 'super_admin')) {
+      throw new Error('The primary administrator account cannot be deleted.');
+    }
     await removeUserAccount(userId);
   },
 

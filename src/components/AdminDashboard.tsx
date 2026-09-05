@@ -3,6 +3,7 @@ import { User, Listing, ComplaintTicket, PlatformSettings } from '../types';
 import { PRODUCT_CATEGORIES, UNILORIN_CAMPUS_LOCATIONS } from '../data/mockData';
 import { cleanPhoneNumber } from '../utils/whatsapp';
 import { api } from '../utils/api';
+import { isPrimaryAdminEmail } from '../firebase/services';
 import { 
   ShieldCheck, 
   Users, 
@@ -66,6 +67,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editingProduct, setEditingProduct] = useState<Listing | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editPrice, setEditPrice] = useState('');
+  const [editOriginalPrice, setEditOriginalPrice] = useState('');
   const [editCategory, setEditCategory] = useState<Listing['category']>('Textbooks & Handouts');
   const [editLocation, setEditLocation] = useState(UNILORIN_CAMPUS_LOCATIONS[0]);
   const [editDescription, setEditDescription] = useState('');
@@ -134,6 +136,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditingProduct(prod);
     setEditTitle(prod.title);
     setEditPrice(prod.price.toString());
+    setEditOriginalPrice(prod.originalPrice ? prod.originalPrice.toString() : '');
     setEditCategory(prod.category);
     setEditLocation(prod.campusLocation);
     setEditDescription(prod.description);
@@ -148,21 +151,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!editingProduct) return;
     setActionLoading(true);
     try {
-      await api.updateProduct(
-        editingProduct.id,
-        {
-          title: editTitle.trim(),
-          price: parseFloat(editPrice) || editingProduct.price,
-          category: editCategory,
-          campusLocation: editLocation,
-          description: editDescription.trim(),
-          imageUrl: editImageUrl.trim() || editingProduct.imageUrl,
-          isFeatured: editIsFeatured,
-          isExpired: editIsExpired,
-          isApproved: editIsApproved,
-        },
-        true
-      );
+      const parsedOriginal = editOriginalPrice.trim() ? parseFloat(editOriginalPrice.trim()) : undefined;
+      const updateData: Partial<Listing> = {
+        title: editTitle.trim(),
+        price: parseFloat(editPrice) || editingProduct.price,
+        category: editCategory,
+        campusLocation: editLocation,
+        description: editDescription.trim(),
+        imageUrl: editImageUrl.trim() || editingProduct.imageUrl,
+        isFeatured: editIsFeatured,
+        isExpired: editIsExpired,
+        isApproved: editIsApproved,
+      };
+
+      // Set valid positive number, or undefined if cleared
+      if (parsedOriginal !== undefined && !isNaN(parsedOriginal) && parsedOriginal > 0) {
+        updateData.originalPrice = parsedOriginal;
+      } else {
+        updateData.originalPrice = undefined;
+      }
+
+      await api.updateProduct(editingProduct.id, updateData, true);
       await onRefreshData();
       setEditingProduct(null);
     } catch (err: any) {
@@ -216,17 +225,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // ==========================================
   // USER ACTIONS
   // ==========================================
-  const handleToggleUserSuspend = async (userId: string) => {
+  const handleToggleUserSuspend = async (targetUser: User) => {
+    if (
+      isPrimaryAdminEmail(targetUser.email) ||
+      targetUser.role === 'admin' ||
+      targetUser.role === 'super_admin'
+    ) {
+      alert('The primary campus administrator account cannot be suspended.');
+      return;
+    }
+
     try {
-      await api.suspendUser(userId);
+      if (targetUser.isBanned) {
+        await api.unsuspendUser(targetUser.id);
+      } else {
+        await api.suspendUser(targetUser.id);
+      }
       await onRefreshData();
     } catch (err: any) {
-      alert('Error suspending user: ' + err.message);
+      alert('Error updating user status: ' + err.message);
     }
   };
 
   const handleDeleteUserPermanent = async () => {
     if (!deleteUserConfirm) return;
+    if (
+      isPrimaryAdminEmail(deleteUserConfirm.email) ||
+      deleteUserConfirm.role === 'admin' ||
+      deleteUserConfirm.role === 'super_admin'
+    ) {
+      alert('The primary campus administrator account cannot be deleted.');
+      setDeleteUserConfirm(null);
+      return;
+    }
     setActionLoading(true);
     try {
       await api.deleteUser(deleteUserConfirm.id);
@@ -709,26 +740,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             )}
 
                             {/* Suspend / Unsuspend */}
-                            <button
-                              onClick={() => handleToggleUserSuspend(u.id)}
-                              title={u.isBanned ? 'Unsuspend User Account' : 'Suspend User Account'}
-                              className={`p-1.5 rounded-lg border transition ${
-                                u.isBanned
-                                  ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
-                                  : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                              }`}
-                            >
-                              {u.isBanned ? <UserCheck className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
-                            </button>
+                            {isPrimaryAdminEmail(u.email) || u.role === 'admin' || u.role === 'super_admin' ? (
+                              <span
+                                title="Primary administrator account (Protected)"
+                                className="p-1.5 rounded-lg border border-[#D9D9C8]/40 bg-[#F5F5F0] text-[#5A5A40] cursor-not-allowed opacity-70 inline-flex items-center justify-center"
+                              >
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleToggleUserSuspend(u)}
+                                title={u.isBanned ? 'Unsuspend User Account' : 'Suspend User Account'}
+                                className={`p-1.5 rounded-lg border transition ${
+                                  u.isBanned
+                                    ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
+                                    : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                }`}
+                              >
+                                {u.isBanned ? <UserCheck className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+                              </button>
+                            )}
 
                             {/* Delete User */}
-                            <button
-                              onClick={() => setDeleteUserConfirm(u)}
-                              title="Permanently Delete User"
-                              className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                            {isPrimaryAdminEmail(u.email) || u.role === 'admin' || u.role === 'super_admin' ? null : (
+                              <button
+                                onClick={() => setDeleteUserConfirm(u)}
+                                title="Permanently Delete User"
+                                className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1220,7 +1262,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-[#2D2D2A] mb-1">Price (₦)</label>
                   <input
@@ -1228,6 +1270,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     required
                     value={editPrice}
                     onChange={(e) => setEditPrice(e.target.value)}
+                    className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#2D2D2A] mb-1">Original Price (₦ - Optional)</label>
+                  <input
+                    type="number"
+                    value={editOriginalPrice}
+                    placeholder="Leave empty if none"
+                    onChange={(e) => setEditOriginalPrice(e.target.value)}
                     className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
                   />
                 </div>

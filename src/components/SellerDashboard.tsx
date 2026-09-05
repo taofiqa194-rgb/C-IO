@@ -72,6 +72,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editPrice, setEditPrice] = useState('');
+  const [editOriginalPrice, setEditOriginalPrice] = useState('');
   const [editCategory, setEditCategory] = useState<ProductCategory>('Textbooks & Handouts');
   const [editLocation, setEditLocation] = useState(UNILORIN_CAMPUS_LOCATIONS[0]);
   const [editDescription, setEditDescription] = useState('');
@@ -184,6 +185,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
     setEditingListing(listing);
     setEditTitle(listing.title);
     setEditPrice(listing.price.toString());
+    setEditOriginalPrice(listing.originalPrice ? listing.originalPrice.toString() : '');
     setEditCategory(listing.category);
     setEditLocation(listing.campusLocation);
     setEditDescription(listing.description);
@@ -195,14 +197,24 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
     if (!editingListing) return;
     setEditLoading(true);
     try {
-      await onUpdateListing(editingListing.id, {
+      const parsedOriginal = editOriginalPrice.trim() ? parseFloat(editOriginalPrice.trim()) : undefined;
+      const updateData: Partial<Listing> = {
         title: editTitle.trim(),
         price: parseFloat(editPrice) || editingListing.price,
         category: editCategory,
         campusLocation: editLocation,
         description: editDescription.trim(),
         imageUrl: editImageUrl.trim() || editingListing.imageUrl,
-      });
+      };
+
+      // Only pass originalPrice if seller typed a positive number, or undefined if cleared
+      if (parsedOriginal !== undefined && !isNaN(parsedOriginal) && parsedOriginal > 0) {
+        updateData.originalPrice = parsedOriginal;
+      } else {
+        updateData.originalPrice = undefined;
+      }
+
+      await onUpdateListing(editingListing.id, updateData);
       setEditingListing(null);
     } catch (err: any) {
       alert('Failed to update listing: ' + err.message);
@@ -589,14 +601,24 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#2D2D2A] mb-1">Price (₦)</label>
+                  <label className="block text-xs font-bold text-[#2D2D2A] mb-1">Selling Price (₦)</label>
                   <input
                     type="number"
                     required
                     value={editPrice}
                     onChange={(e) => setEditPrice(e.target.value)}
+                    className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#2D2D2A] mb-1">Original Price (₦ - Optional)</label>
+                  <input
+                    type="number"
+                    value={editOriginalPrice}
+                    placeholder="Leave empty if none"
+                    onChange={(e) => setEditOriginalPrice(e.target.value)}
                     className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
                   />
                 </div>

@@ -4,10 +4,10 @@
   "complaints": [],
   "admin": {
     "username": "admin",
-    "email": "admin@unilorinmini.edu.ng",
-    "passwordHash": "5ccb91145d9fe39f9a6015a144c82b27d26c9761b04489e6cae2d13e2d3b4b76791a88f26e05b055b0d6a5530c2d2247e8c7840a3e554a0d3e78dccafeb7a568",
-    "passwordSalt": "6a4f3b520bedf9291c7c07c357c69ae8",
-    "lastUpdated": "2026-09-05T01:10:43.989Z"
+    "email": "admin@unilorinmarketplace.com",
+    "passwordHash": "0fba2d213320afb37d29308f16ea0a3974819e375b051e75befcd306e81b88e54ffc9dbb740292a4ba8e25a5616ca6c9457b28d22dd0ae84a60f3dd24cef4758",
+    "passwordSalt": "37f52de9bc5ff879bd33423a25db21d1",
+    "lastUpdated": "2026-09-05T09:01:00.000Z"
   },
   "settings": {
     "siteName": "C'IO — University of Ilorin Mini Campus Marketplace",

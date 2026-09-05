@@ -1,4 +1,4 @@
-export type UserRole = 'student' | 'buyer' | 'business' | 'admin';
+export type UserRole = 'student' | 'buyer' | 'business' | 'admin' | 'super_admin';
 
 export interface User {
   id: string;
@@ -42,6 +42,7 @@ export interface Listing {
   description: string;
   imageUrl: string;
   additionalImages?: string[];
+  images?: string[];
   sellerId: string;
   sellerName: string;
   sellerPhone: string;
@@ -50,6 +51,8 @@ export interface Listing {
   sellerMatricNumber?: string;
   sellerBusinessName?: string;
   sellerBusinessVerified?: boolean;
+  campus?: string;
+  location?: string;
   campusLocation: string;
   condition: ItemCondition;
   isSubscription?: boolean;
@@ -59,6 +62,7 @@ export interface Listing {
   isSold?: boolean;
   isExpired?: boolean;
   isApproved?: boolean;
+  status?: 'active' | 'sold' | 'expired' | 'pending';
   viewsCount: number;
   inquiriesCount: number;
   createdAt: string;

@@ -28,6 +28,20 @@ import { auth, db, storage } from './config';
 import { User, Listing, ComplaintTicket, PlatformSettings, UserRole } from '../types';
 import { OFFICIAL_SUPPORT_PHONE, OFFICIAL_SUPPORT_WHATSAPP } from '../data/mockData';
 
+export const PRIMARY_ADMIN_EMAIL = 'admin@unilorinmarketplace.com';
+export const OWNER_ADMIN_EMAIL = 'hammedolawumiolawumi@gmail.com';
+
+export function isPrimaryAdminEmail(email?: string | null): boolean {
+  if (!email) return false;
+  const lower = email.trim().toLowerCase();
+  return (
+    lower === 'admin@unilorinmarketplace.com' ||
+    lower === 'hammedolawumiolawumi@gmail.com' ||
+    lower === PRIMARY_ADMIN_EMAIL.toLowerCase() ||
+    lower === OWNER_ADMIN_EMAIL.toLowerCase()
+  );
+}
+
 /**
  * Recursively strips undefined values from an object or array before passing to Firestore.
  * Firestore setDoc(), addDoc(), and updateDoc() reject `undefined` values with:
@@ -140,12 +154,57 @@ export async function registerUser(params: {
 export async function loginUser(email: string, password: string): Promise<User> {
   const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
   const fbUser = credential.user;
+  const isPrimary = isPrimaryAdminEmail(fbUser.email);
 
-  // Fetch Firestore profile
-  const userSnap = await getDoc(doc(db, 'users', fbUser.uid));
+  // Default profile in case of offline/network fallback
+  const fallbackProfile: User = {
+    id: fbUser.uid,
+    name: fbUser.displayName || (isPrimary ? 'Campus Marketplace Administrator' : 'Campus User'),
+    email: fbUser.email || '',
+    phone: OFFICIAL_SUPPORT_PHONE,
+    role: isPrimary ? 'admin' : 'student',
+    campusLocation: 'University of Ilorin Mini Campus',
+    isMatricVerified: isPrimary,
+    isBusinessVerified: isPrimary,
+    isProMember: false,
+    isBanned: false,
+    createdAt: new Date().toISOString().split('T')[0],
+    avatarUrl: fbUser.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(fbUser.email || 'User')}`,
+  };
+
+  // Fetch Firestore profile safely
+  const userRef = doc(db, 'users', fbUser.uid);
+  let userSnap = null;
+  try {
+    userSnap = await getDoc(userRef);
+  } catch (docErr) {
+    console.warn('Firestore profile fetch fallback (offline/delay):', docErr);
+    // Asynchronously cache/set profile without blocking the login
+    setDoc(userRef, sanitizeForFirestore(fallbackProfile)).catch(() => {});
+    return fallbackProfile;
+  }
   
-  if (userSnap.exists()) {
-    const userProfile = userSnap.data() as User;
+  if (userSnap && userSnap.exists()) {
+    let userProfile = userSnap.data() as User;
+
+    // The primary administrator account can NEVER be suspended and MUST have role 'admin'
+    if (isPrimary || userProfile.role === 'admin' || userProfile.role === 'super_admin') {
+      if (userProfile.isBanned || (userProfile.role !== 'admin' && userProfile.role !== 'super_admin')) {
+        userProfile = {
+          ...userProfile,
+          isBanned: false,
+          role: 'admin',
+        };
+        // Update actual Firestore record so suspended status is permanently removed
+        await updateDoc(userRef, {
+          isBanned: false,
+          role: 'admin',
+        }).catch((err) => console.warn('Could not auto-repair admin status in Firestore:', err));
+      }
+      return userProfile;
+    }
+
+    // Normal users check suspension
     if (userProfile.isBanned) {
       await signOut(auth);
       throw new Error('This account has been suspended by campus administration.');
@@ -154,24 +213,8 @@ export async function loginUser(email: string, password: string): Promise<User> 
   }
 
   // If profile doesn't exist yet (e.g. admin or created directly in Firebase Auth console)
-  const isAdminEmail = fbUser.email?.toLowerCase() === 'admin@unilorinmini.edu.ng';
-  const generatedProfile: User = {
-    id: fbUser.uid,
-    name: fbUser.displayName || (isAdminEmail ? 'System Administrator' : 'Campus User'),
-    email: fbUser.email || '',
-    phone: OFFICIAL_SUPPORT_PHONE,
-    role: isAdminEmail ? 'admin' : 'student',
-    campusLocation: 'Academic Complex, Mini Campus',
-    isMatricVerified: isAdminEmail,
-    isBusinessVerified: false,
-    isProMember: false,
-    isBanned: false,
-    createdAt: new Date().toISOString().split('T')[0],
-    avatarUrl: fbUser.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(fbUser.email || 'User')}`,
-  };
-
-  await setDoc(doc(db, 'users', fbUser.uid), generatedProfile);
-  return generatedProfile;
+  await setDoc(userRef, sanitizeForFirestore(fallbackProfile)).catch(() => {});
+  return fallbackProfile;
 }
 
 export async function logoutUser(): Promise<void> {
@@ -193,21 +236,75 @@ export async function updateUserProfile(userId: string, updates: Partial<User>, 
     ...(updatedAvatarUrl ? { avatarUrl: updatedAvatarUrl } : {}),
   };
 
-  await updateDoc(doc(db, 'users', userId), payload);
+  const safePayload = sanitizeForFirestore(payload);
+  await updateDoc(doc(db, 'users', userId), safePayload);
   const fresh = await getDoc(doc(db, 'users', userId));
   return fresh.data() as User;
 }
 
 export async function getUserProfile(userId: string): Promise<User | null> {
-  const snap = await getDoc(doc(db, 'users', userId));
-  return snap.exists() ? (snap.data() as User) : null;
+  try {
+    const userRef = doc(db, 'users', userId);
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) {
+      // If current auth user matches this ID and is admin, build temporary profile
+      const current = auth.currentUser;
+      if (current && current.uid === userId && isPrimaryAdminEmail(current.email)) {
+        return {
+          id: current.uid,
+          name: current.displayName || 'Campus Marketplace Administrator',
+          email: current.email || '',
+          phone: OFFICIAL_SUPPORT_PHONE,
+          role: 'admin',
+          campusLocation: 'University of Ilorin Mini Campus',
+          isMatricVerified: true,
+          isBusinessVerified: true,
+          isProMember: false,
+          isBanned: false,
+          createdAt: new Date().toISOString().split('T')[0],
+          avatarUrl: current.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=Admin`,
+        };
+      }
+      return null;
+    }
+    const data = snap.data() as User;
+    if (isPrimaryAdminEmail(data.email)) {
+      if (data.isBanned || (data.role !== 'admin' && data.role !== 'super_admin')) {
+        data.isBanned = false;
+        data.role = 'admin';
+        updateDoc(userRef, { isBanned: false, role: 'admin' }).catch(() => {});
+      }
+    }
+    return data;
+  } catch (err) {
+    console.warn('getUserProfile offline/fetch fallback:', err);
+    const current = auth.currentUser;
+    if (current && current.uid === userId) {
+      const isPrimary = isPrimaryAdminEmail(current.email);
+      return {
+        id: current.uid,
+        name: current.displayName || (isPrimary ? 'Campus Marketplace Administrator' : 'Campus User'),
+        email: current.email || '',
+        phone: OFFICIAL_SUPPORT_PHONE,
+        role: isPrimary ? 'admin' : 'student',
+        campusLocation: 'University of Ilorin Mini Campus',
+        isMatricVerified: isPrimary,
+        isBusinessVerified: isPrimary,
+        isProMember: false,
+        isBanned: false,
+        createdAt: new Date().toISOString().split('T')[0],
+        avatarUrl: current.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(current.email || 'User')}`,
+      };
+    }
+    return null;
+  }
 }
 
 // Admin determination helper
 export function checkIsAdminUser(user: User | null, fbUser: FirebaseUser | null): boolean {
   if (!user && !fbUser) return false;
-  if (user?.role === 'admin') return true;
-  if (fbUser?.email?.toLowerCase() === 'admin@unilorinmini.edu.ng') return true;
+  if (user?.role === 'admin' || user?.role === 'super_admin') return true;
+  if (isPrimaryAdminEmail(user?.email) || isPrimaryAdminEmail(fbUser?.email)) return true;
   return false;
 }
 
@@ -219,35 +316,53 @@ export function subscribeToAuth(callback: (user: User | null, isAdmin: boolean) 
       return;
     }
 
+    const isPrimary = isPrimaryAdminEmail(fbUser.email);
+    const fallbackProfile: User = {
+      id: fbUser.uid,
+      name: fbUser.displayName || (isPrimary ? 'Campus Marketplace Administrator' : 'Campus User'),
+      email: fbUser.email || '',
+      phone: OFFICIAL_SUPPORT_PHONE,
+      role: isPrimary ? 'admin' : 'student',
+      campusLocation: 'University of Ilorin Mini Campus',
+      isMatricVerified: isPrimary,
+      isBusinessVerified: isPrimary,
+      isProMember: false,
+      isBanned: false,
+      createdAt: new Date().toISOString().split('T')[0],
+      avatarUrl: fbUser.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(fbUser.email || 'User')}`,
+    };
+
     try {
-      const snap = await getDoc(doc(db, 'users', fbUser.uid));
+      const userRef = doc(db, 'users', fbUser.uid);
+      let snap = null;
+      try {
+        snap = await getDoc(userRef);
+      } catch (err) {
+        console.warn('Auth state getDoc fallback:', err);
+      }
+
       let userProfile: User;
-      if (snap.exists()) {
+
+      if (snap && snap.exists()) {
         userProfile = snap.data() as User;
+        if (isPrimary && (userProfile.isBanned || (userProfile.role !== 'admin' && userProfile.role !== 'super_admin'))) {
+          userProfile.isBanned = false;
+          userProfile.role = 'admin';
+          updateDoc(userRef, {
+            isBanned: false,
+            role: 'admin',
+          }).catch(() => {});
+        }
       } else {
-        const isAdminEmail = fbUser.email?.toLowerCase() === 'admin@unilorinmini.edu.ng';
-        userProfile = {
-          id: fbUser.uid,
-          name: fbUser.displayName || (isAdminEmail ? 'System Administrator' : 'Campus User'),
-          email: fbUser.email || '',
-          phone: OFFICIAL_SUPPORT_PHONE,
-          role: isAdminEmail ? 'admin' : 'student',
-          campusLocation: 'Academic Complex, Mini Campus',
-          isMatricVerified: isAdminEmail,
-          isBusinessVerified: false,
-          isProMember: false,
-          isBanned: false,
-          createdAt: new Date().toISOString().split('T')[0],
-          avatarUrl: fbUser.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(fbUser.email || 'User')}`,
-        };
-        await setDoc(doc(db, 'users', fbUser.uid), userProfile);
+        userProfile = fallbackProfile;
+        setDoc(userRef, sanitizeForFirestore(userProfile)).catch(() => {});
       }
 
       const isAdmin = checkIsAdminUser(userProfile, fbUser);
       callback(userProfile, isAdmin);
     } catch (e) {
       console.error('Error fetching user profile in auth state changed:', e);
-      callback(null, false);
+      callback(fallbackProfile, isPrimary);
     }
   });
 }
@@ -642,7 +757,16 @@ export async function fetchAllUsers(): Promise<User[]> {
   const snapshot = await getDocs(collection(db, 'users'));
   const users: User[] = [];
   snapshot.forEach((docSnap) => {
-    users.push({ ...docSnap.data(), id: docSnap.id } as User);
+    const u = { ...docSnap.data(), id: docSnap.id } as User;
+    // Auto-heal primary admin account if ever found suspended or demoted
+    if (isPrimaryAdminEmail(u.email)) {
+      if (u.isBanned || (u.role !== 'admin' && u.role !== 'super_admin')) {
+        u.isBanned = false;
+        u.role = 'admin';
+        updateDoc(docSnap.ref, { isBanned: false, role: 'admin' }).catch(() => {});
+      }
+    }
+    users.push(u);
   });
   return users;
 }
@@ -661,12 +785,63 @@ export async function setStudentMatricVerification(userId: string, isVerified: b
 }
 
 export async function setAccountBanStatus(userId: string, isBanned: boolean): Promise<void> {
-  await updateDoc(doc(db, 'users', userId), { isBanned });
+  const userRef = doc(db, 'users', userId);
+  const snap = await getDoc(userRef);
+  if (snap.exists()) {
+    const data = snap.data() as User;
+    if (isPrimaryAdminEmail(data.email) || data.role === 'admin' || data.role === 'super_admin') {
+      if (isBanned) {
+        throw new Error('The primary administrator account cannot be suspended.');
+      }
+    }
+  }
+  await updateDoc(userRef, { isBanned });
 }
 
 export async function removeUserAccount(userId: string): Promise<void> {
-  await deleteDoc(doc(db, 'users', userId));
+  const userRef = doc(db, 'users', userId);
+  const snap = await getDoc(userRef);
+  if (snap.exists()) {
+    const data = snap.data() as User;
+    if (isPrimaryAdminEmail(data.email) || data.role === 'admin' || data.role === 'super_admin') {
+      throw new Error('The primary campus administrator account cannot be deleted.');
+    }
+  }
+  await deleteDoc(userRef);
 }
+
+/**
+ * Synchronize and migrate administrator accounts:
+ * - Demotes and removes legacy administrator privileges from the old account (admin@unilorinmini.edu.ng).
+ * - Ensures the new primary administrator account is active, unsuspended, and assigned the admin role.
+ */
+export async function syncAndMigrateAdminAccounts(): Promise<void> {
+  try {
+    // 1. Remove legacy admin account or revoke admin privileges
+    const legacyEmail = 'admin@unilorinmini.edu.ng';
+    const legacyQ = query(collection(db, 'users'), where('email', '==', legacyEmail));
+    const legacySnap = await getDocs(legacyQ);
+    for (const d of legacySnap.docs) {
+      await deleteDoc(d.ref).catch(async () => {
+        await updateDoc(d.ref, { role: 'student', isBanned: true });
+      });
+    }
+
+    // 2. Ensure new primary administrator account is active and has admin role
+    const primaryQ = query(collection(db, 'users'), where('email', '==', PRIMARY_ADMIN_EMAIL.toLowerCase()));
+    const primarySnap = await getDocs(primaryQ);
+    for (const d of primarySnap.docs) {
+      const data = d.data() as User;
+      if (data.isBanned || (data.role !== 'admin' && data.role !== 'super_admin')) {
+        await updateDoc(d.ref, { isBanned: false, role: 'admin' });
+      }
+    }
+  } catch (err) {
+    console.warn('Admin account synchronization note:', err);
+  }
+}
+
+export const restoreAdminAccount = syncAndMigrateAdminAccounts;
 
 export async function getPlatformSettings(): Promise<PlatformSettings> {
   const settingDocRef = doc(db, 'settings', 'global');

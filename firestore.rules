@@ -12,12 +12,20 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isPrimaryAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'admin@unilorinmarketplace.com' ||
+        request.auth.token.email == 'hammedolawumiolawumi@gmail.com'
+      );
+    }
+
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.admin == true ||
-        request.auth.token.email == 'admin@unilorinmini.edu.ng' ||
+        isPrimaryAdmin() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin'))
       );
     }
 
@@ -31,9 +39,12 @@ service cloud.firestore {
       // Authenticated users can view profiles (to see seller info)
       allow read: if isSignedIn();
       // Users can only create and update their own document, admins can manage all
+      // The primary administrator account can never be marked as banned or deleted
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
+      allow update: if (isOwner(userId) || isAdmin()) && (
+        !((resource.data.email == 'admin@unilorinmarketplace.com' || resource.data.email == 'hammedolawumiolawumi@gmail.com') && request.resource.data.isBanned == true)
+      );
+      allow delete: if isAdmin() && resource.data.email != 'admin@unilorinmarketplace.com' && resource.data.email != 'hammedolawumiolawumi@gmail.com';
 
       // Subcollection for user saved favorites
       match /favorites/{productId} {
