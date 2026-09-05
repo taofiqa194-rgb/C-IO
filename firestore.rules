@@ -1,0 +1,75 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.email == 'admin@unilorinmini.edu.ng' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    // Health / connection test doc
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      // Authenticated users can view profiles (to see seller info)
+      allow read: if isSignedIn();
+      // Users can only create and update their own document, admins can manage all
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+
+      // Subcollection for user saved favorites
+      match /favorites/{productId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Marketplace Products Collection
+    match /products/{productId} {
+      // Anyone can browse listings
+      allow read: if true;
+
+      // Authenticated users can post products under their own seller ID
+      allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
+
+      // Sellers can update/delete their own products; Admins have full moderation rights
+      allow update: if isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin());
+    }
+
+    // Support and Complaints Tickets
+    match /complaints/{complaintId} {
+      // Users can see their own complaints, admins can see all complaints
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      // Authenticated users can create complaint tickets
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+
+      // Only administrators can reply, resolve, update or delete complaint tickets
+      allow update, delete: if isAdmin();
+    }
+
+    // Platform Global Settings
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile for students, general buyers, businesses, and administrators",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["student", "buyer", "business", "admin"] },
+        "campusLocation": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "matricNumber": { "type": "string" },
+        "isMatricVerified": { "type": "boolean" },
+        "faculty": { "type": "string" },
+        "department": { "type": "string" },
+        "businessName": { "type": "string" },
+        "isBusinessVerified": { "type": "boolean" },
+        "isProMember": { "type": "boolean" },
+        "isBanned": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "phone", "role"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Marketplace listing for goods and services at University of Ilorin Mini Campus",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "additionalImages": { "type": "array" },
+        "sellerId": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "sellerPhone": { "type": "string" },
+        "sellerRole": { "type": "string" },
+        "sellerMatricVerified": { "type": "boolean" },
+        "sellerMatricNumber": { "type": "string" },
+        "sellerBusinessName": { "type": "string" },
+        "sellerBusinessVerified": { "type": "boolean" },
+        "campusLocation": { "type": "string" },
+        "condition": { "type": "string" },
+        "isSubscription": { "type": "boolean" },
+        "subscriptionDuration": { "type": "string" },
+        "isFeatured": { "type": "boolean" },
+        "isSold": { "type": "boolean" },
+        "isExpired": { "type": "boolean" },
+        "isApproved": { "type": "boolean" },
+        "viewsCount": { "type": "number" },
+        "inquiriesCount": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "tags": { "type": "array" }
+      },
+      "required": ["id", "title", "price", "category", "sellerId", "sellerName", "sellerPhone", "campusLocation"]
+    },
+    "ComplaintTicket": {
+      "title": "ComplaintTicket",
+      "description": "Support or fraud report submitted by a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "accusedSellerName": { "type": "string" },
+        "status": { "type": "string", "enum": ["Open", "Under Investigation", "Resolved"] },
+        "createdAt": { "type": "string" },
+        "adminReply": { "type": "string" },
+        "adminRepliedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "userName", "userPhone", "category", "title", "description", "status"]
+    },
+    "Favorite": {
+      "title": "Favorite",
+      "description": "User bookmarked product reference",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "savedAt": { "type": "string" }
+      },
+      "required": ["productId"]
+    },
+    "PlatformSettings": {
+      "title": "PlatformSettings",
+      "description": "Platform global configuration and support contacts",
+      "type": "object",
+      "properties": {
+        "siteName": { "type": "string" },
+        "listingFeeNaira": { "type": "number" },
+        "featuredBoostFeeNaira": { "type": "number" },
+        "vendorSubscriptionSemesterFee": { "type": "number" },
+        "platformSupportPhone": { "type": "string" },
+        "platformSupportWhatsApp": { "type": "string" },
+        "allowGuestBrowsing": { "type": "boolean" },
+        "requireMatricVerificationForSelling": { "type": "boolean" },
+        "maintenanceMode": { "type": "boolean" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles and seller accounts"
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Marketplace product listings"
+    },
+    "/complaints/{complaintId}": {
+      "schema": { "$ref": "#/entities/ComplaintTicket" },
+      "description": "Customer support and safety complaints"
+    },
+    "/users/{userId}/favorites/{productId}": {
+      "schema": { "$ref": "#/entities/Favorite" },
+      "description": "Saved favorite products for a specific user"
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/PlatformSettings" },
+      "description": "Global marketplace configuration"
+    }
+  }
+}

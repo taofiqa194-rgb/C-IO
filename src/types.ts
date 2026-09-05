@@ -96,6 +96,14 @@ export interface PlatformSettings {
   officialPhone: string;
   listingModerationEnabled: boolean;
   registrationEnabled: boolean;
+  listingFeeNaira?: number;
+  featuredBoostFeeNaira?: number;
+  vendorSubscriptionSemesterFee?: number;
+  platformSupportPhone?: string;
+  platformSupportWhatsApp?: string;
+  allowGuestBrowsing?: boolean;
+  requireMatricVerificationForSelling?: boolean;
+  maintenanceMode?: boolean;
 }
 
 export interface PlatformStats {

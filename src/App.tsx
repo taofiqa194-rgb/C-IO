@@ -12,6 +12,8 @@ import {
   OFFICIAL_SUPPORT_WHATSAPP
 } from './data/mockData';
 import { api } from './utils/api';
+import { subscribeToProducts } from './firebase/services';
+import { testFirebaseConnection } from './firebase/config';
 import { Navbar } from './components/Navbar';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { ProductCard } from './components/ProductCard';
@@ -99,6 +101,26 @@ export default function App() {
     }
   }, [favorites]);
 
+  // Load and sync user favorites from Firestore when user is authenticated
+  useEffect(() => {
+    if (currentUser?.id) {
+      api.getUserFavorites(currentUser.id).then((cloudFavs) => {
+        if (cloudFavs && cloudFavs.length > 0) {
+          setFavorites((prev) => Array.from(new Set([...prev, ...cloudFavs])));
+        }
+      }).catch((e) => console.warn('Could not sync user favorites from Firestore:', e));
+    }
+  }, [currentUser?.id]);
+
+  // Realtime products subscription from Cloud Firestore
+  useEffect(() => {
+    testFirebaseConnection();
+    const unsubscribe = subscribeToProducts((realtimeProducts) => {
+      setListings(realtimeProducts);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Load backend data
   const loadData = useCallback(async () => {
     try {
@@ -148,11 +170,17 @@ export default function App() {
     }
   }, [listings]);
 
-  // Toggle favorite
-  const handleToggleFavorite = (listingId: string) => {
+  // Toggle favorite with Firestore persistence
+  const handleToggleFavorite = async (listingId: string) => {
+    const isFav = favorites.includes(listingId);
     setFavorites((prev) =>
-      prev.includes(listingId) ? prev.filter((id) => id !== listingId) : [...prev, listingId]
+      isFav ? prev.filter((id) => id !== listingId) : [...prev, listingId]
     );
+    if (currentUser?.id) {
+      await api.toggleFavorite(currentUser.id, listingId, !isFav).catch((err) => {
+        console.warn('Failed to toggle favorite in Firestore:', err);
+      });
+    }
   };
 
   // Add listing

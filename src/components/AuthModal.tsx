@@ -39,6 +39,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // Login form state
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [isResetPasswordMode, setIsResetPasswordMode] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
 
   // Registration form state
   const [role, setRole] = useState<UserRole>('student');
@@ -101,6 +103,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }, 1000);
     } catch (err: any) {
       setFormError(err.message || 'Login failed. Please check your credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+    setSuccessMessage('');
+    if (!resetEmail.trim()) {
+      setFormError('Please enter your account email address to receive reset instructions.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.resetPassword(resetEmail.trim());
+      setSuccessMessage('Password reset link sent! Please check your email inbox.');
+      setIsResetPasswordMode(false);
+      setResetEmail('');
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to send password reset email.');
     } finally {
       setLoading(false);
     }
@@ -295,56 +318,104 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
         </div>
 
-        {/* LOGIN FORM */}
+        {/* LOGIN / RESET PASSWORD FORM */}
         {activeTab === 'login' && !currentUser && (
-          <form onSubmit={handleLoginSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-[#2D2D2A] mb-1.5">
-                Phone Number or Email
-              </label>
-              <input
-                type="text"
-                required
-                value={loginIdentifier}
-                onChange={(e) => setLoginIdentifier(e.target.value)}
-                placeholder="e.g. 08142345678 or student@unilorin.edu.ng"
-                className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2.5 text-xs sm:text-sm text-[#2D2D2A] placeholder:text-[#A0A090] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-              />
-            </div>
+          isResetPasswordMode ? (
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#2D2D2A] mb-1.5">
+                  Your Account Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  placeholder="e.g. yourname@gmail.com or matric@unilorin.edu.ng"
+                  className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2.5 text-xs sm:text-sm text-[#2D2D2A] placeholder:text-[#A0A090] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
+                />
+                <p className="text-[11px] text-[#7A7A6A] mt-1">
+                  We'll send a secure password reset link to this email address via Firebase.
+                </p>
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-[#2D2D2A] mb-1.5">
-                Password
-              </label>
-              <input
-                type="password"
-                required
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="Enter your account password"
-                className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2.5 text-xs sm:text-sm text-[#2D2D2A] placeholder:text-[#A0A090] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#5A5A40] hover:bg-[#474732] active:bg-[#383827] text-white font-bold py-3 rounded-full text-xs sm:text-sm transition shadow-xs disabled:opacity-60"
-            >
-              {loading ? 'Logging in...' : 'Log In to Account'}
-            </button>
-
-            <div className="text-center pt-2">
-              <span className="text-xs text-[#7A7A6A]">Don't have an account yet? </span>
               <button
-                type="button"
-                onClick={() => { setActiveTab('register'); setFormError(''); }}
-                className="text-xs font-bold text-[#5A5A40] hover:underline"
+                type="submit"
+                disabled={loading}
+                className="w-full bg-[#5A5A40] hover:bg-[#474732] active:bg-[#383827] text-white font-bold py-3 rounded-full text-xs sm:text-sm transition shadow-xs disabled:opacity-60"
               >
-                Register Here
+                {loading ? 'Sending link...' : 'Send Password Reset Email'}
               </button>
-            </div>
-          </form>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setIsResetPasswordMode(false); setFormError(''); }}
+                  className="text-xs font-semibold text-[#5A5A40] hover:underline"
+                >
+                  ← Back to Log In
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleLoginSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#2D2D2A] mb-1.5">
+                  Phone Number or Email
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={loginIdentifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
+                  placeholder="e.g. 08142345678 or student@unilorin.edu.ng"
+                  className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2.5 text-xs sm:text-sm text-[#2D2D2A] placeholder:text-[#A0A090] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-[#2D2D2A]">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setIsResetPasswordMode(true); setFormError(''); setResetEmail(loginIdentifier.includes('@') ? loginIdentifier : ''); }}
+                    className="text-[11px] font-medium text-[#5A5A40] hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  required
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Enter your account password"
+                  className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2.5 text-xs sm:text-sm text-[#2D2D2A] placeholder:text-[#A0A090] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-[#5A5A40] hover:bg-[#474732] active:bg-[#383827] text-white font-bold py-3 rounded-full text-xs sm:text-sm transition shadow-xs disabled:opacity-60"
+              >
+                {loading ? 'Logging in...' : 'Log In to Account'}
+              </button>
+
+              <div className="text-center pt-2">
+                <span className="text-xs text-[#7A7A6A]">Don't have an account yet? </span>
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('register'); setFormError(''); }}
+                  className="text-xs font-bold text-[#5A5A40] hover:underline"
+                >
+                  Register Here
+                </button>
+              </div>
+            </form>
+          )
         )}
 
         {/* REGISTRATION FORM */}
