@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { User, Listing, ComplaintTicket, PlatformSettings } from '../types';
 import { PRODUCT_CATEGORIES, UNILORIN_CAMPUS_LOCATIONS } from '../data/mockData';
 import { cleanPhoneNumber } from '../utils/whatsapp';
 import { api } from '../utils/api';
 import { isPrimaryAdminEmail } from '../firebase/services';
-import { WelcomeAnnouncementModal } from './WelcomeAnnouncementModal';
 import { 
   ShieldCheck, 
   Users, 
@@ -30,9 +29,7 @@ import {
   Search, 
   Filter, 
   AlertOctagon,
-  X,
-  Globe,
-  Megaphone
+  X
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -95,43 +92,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [moderationEnabled, setModerationEnabled] = useState(settings.listingModerationEnabled);
   const [registrationEnabled, setRegistrationEnabled] = useState(settings.registrationEnabled);
   const [settingsMsg, setSettingsMsg] = useState('');
-
-  // Website Name & Branding State
-  const [siteNameInput, setSiteNameInput] = useState(settings.siteName || "C'IO");
-  const [siteTaglineInput, setSiteTaglineInput] = useState(settings.siteTagline || "University of Ilorin Mini Campus Marketplace");
-  const [siteShortNameInput, setSiteShortNameInput] = useState(settings.siteShortName || "C'IO");
-  const [brandingLoading, setBrandingLoading] = useState(false);
-  const [brandingMsg, setBrandingMsg] = useState('');
-
-  // Welcome Popup & Announcement State
-  const [welcomePopupEnabled, setWelcomePopupEnabled] = useState(settings.welcomePopupEnabled !== false);
-  const [welcomePopupTitle, setWelcomePopupTitle] = useState(settings.welcomePopupTitle || "Welcome to C'IO Mini Campus Marketplace! 🎓");
-  const [welcomePopupMessage, setWelcomePopupMessage] = useState(
-    settings.welcomePopupMessage || "Welcome to the official University of Ilorin Mini Campus student marketplace! Easily buy and sell textbooks, gadgets, hostel accessories, and student passes. Always inspect items in daylight at Mini Campus Gate or the Student Center before making payment."
-  );
-  const [welcomePopupBadge, setWelcomePopupBadge] = useState(settings.welcomePopupBadge || "Campus Announcement & Safety Notice");
-  const [welcomePopupActionText, setWelcomePopupActionText] = useState(settings.welcomePopupActionText || "Explore Marketplace");
-  const [announcementAlertInput, setAnnouncementAlertInput] = useState(settings.announcementAlert || "Inspect items in daylight at Mini Campus Gate or Student Center before payment.");
-  const [announcementLoading, setAnnouncementLoading] = useState(false);
-  const [announcementMsg, setAnnouncementMsg] = useState('');
-  const [isPreviewingWelcomeModal, setIsPreviewingWelcomeModal] = useState(false);
-
-  // Sync state if settings prop changes externally
-  useEffect(() => {
-    if (settings) {
-      if (settings.siteName) setSiteNameInput(settings.siteName);
-      if (settings.siteTagline) setSiteTaglineInput(settings.siteTagline);
-      if (settings.siteShortName) setSiteShortNameInput(settings.siteShortName);
-      setWelcomePopupEnabled(settings.welcomePopupEnabled !== false);
-      if (settings.welcomePopupTitle) setWelcomePopupTitle(settings.welcomePopupTitle);
-      if (settings.welcomePopupMessage) setWelcomePopupMessage(settings.welcomePopupMessage);
-      if (settings.welcomePopupBadge) setWelcomePopupBadge(settings.welcomePopupBadge);
-      if (settings.welcomePopupActionText) setWelcomePopupActionText(settings.welcomePopupActionText);
-      if (settings.announcementAlert) setAnnouncementAlertInput(settings.announcementAlert);
-      setModerationEnabled(Boolean(settings.listingModerationEnabled));
-      setRegistrationEnabled(settings.registrationEnabled !== false);
-    }
-  }, [settings]);
 
   // Action Loading states
   const [actionLoading, setActionLoading] = useState(false);
@@ -372,7 +332,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // ==========================================
-  // SETTINGS: PLATFORM CONTROLS
+  // SETTINGS
   // ==========================================
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -381,63 +341,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         listingModerationEnabled: moderationEnabled,
         registrationEnabled,
       });
-      setSettingsMsg('Platform controls saved successfully!');
+      setSettingsMsg('Website settings saved successfully!');
       setTimeout(() => setSettingsMsg(''), 2500);
       await onRefreshData();
     } catch (err: any) {
       alert('Error saving settings: ' + err.message);
-    }
-  };
-
-  // ==========================================
-  // SETTINGS: WEBSITE NAME & BRANDING
-  // ==========================================
-  const handleSaveBranding = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!siteNameInput.trim()) {
-      alert('Website name cannot be empty.');
-      return;
-    }
-    try {
-      setBrandingLoading(true);
-      await api.updateSettings({
-        siteName: siteNameInput.trim(),
-        siteTagline: siteTaglineInput.trim(),
-        siteShortName: siteShortNameInput.trim() || siteNameInput.trim(),
-      });
-      setBrandingMsg('Website name and branding synced successfully across the website!');
-      setTimeout(() => setBrandingMsg(''), 3000);
-      await onRefreshData();
-    } catch (err: any) {
-      alert('Error saving website name: ' + err.message);
-    } finally {
-      setBrandingLoading(false);
-    }
-  };
-
-  // ==========================================
-  // SETTINGS: WELCOME POPUP & ANNOUNCEMENT
-  // ==========================================
-  const handleSaveAnnouncement = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      setAnnouncementLoading(true);
-      await api.updateSettings({
-        welcomePopupEnabled,
-        welcomePopupTitle: welcomePopupTitle.trim(),
-        welcomePopupMessage: welcomePopupMessage.trim(),
-        welcomePopupBadge: welcomePopupBadge.trim(),
-        welcomePopupActionText: welcomePopupActionText.trim(),
-        announcementAlert: announcementAlertInput.trim(),
-        announcementUpdatedAt: new Date().toISOString(),
-      });
-      setAnnouncementMsg('Home page welcome announcement saved and active!');
-      setTimeout(() => setAnnouncementMsg(''), 3000);
-      await onRefreshData();
-    } catch (err: any) {
-      alert('Error saving announcement: ' + err.message);
-    } finally {
-      setAnnouncementLoading(false);
     }
   };
 
@@ -448,10 +356,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#5A5A40] text-xs font-bold text-white mb-2">
             <ShieldCheck className="h-4 w-4" />
-            {settings.siteName || "C'IO"} Administration Console
+            C'IO Administration Console
           </div>
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-white">
-            {settings.siteTagline || "University of Ilorin Mini Campus Marketplace"} Desk
+            University of Ilorin Mini Campus Marketplace Desk
           </h1>
           <p className="text-xs text-[#D9D9C8]/80 mt-1">
             Real-time management for listings, verified student accounts, inquiries, and security moderation.
@@ -1123,395 +1031,138 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* 5. SETTINGS & SECURITY TAB */}
       {/* ========================================== */}
       {activeTab === 'settings' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* SECTION 1: WEBSITE NAME & CAMPUS BRANDING */}
-            <div className="bg-white p-6 rounded-3xl border border-[#E0E0D5] shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-full bg-[#E8E8DF] text-[#5A5A40] flex items-center justify-center">
-                    <Globe className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-serif font-bold text-[#2D2D2A]">Website Name & Campus Branding</h3>
-                    <p className="text-[11px] text-[#7A7A6A]">
-                      Change the name of the website. Updates sync dynamically across all client headers, badges, and pages.
-                    </p>
-                  </div>
-                </div>
-
-                {brandingMsg && (
-                  <div className="my-3 p-3 rounded-2xl bg-green-50 text-green-700 border border-green-200 text-xs flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    <span>{brandingMsg}</span>
-                  </div>
-                )}
-
-                <form onSubmit={handleSaveBranding} className="space-y-3.5 mt-4">
-                  <div>
-                    <label className="block text-xs font-bold text-[#2D2D2A] mb-1">
-                      Website Brand Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={siteNameInput}
-                      onChange={(e) => setSiteNameInput(e.target.value)}
-                      placeholder="e.g. C'IO or Unilorin Mini Campus"
-                      className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2.5 text-xs text-[#2D2D2A] font-semibold focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-                    />
-                    <span className="text-[10px] text-[#7A7A6A] mt-1 block">
-                      Replaces the primary logo title on desktop and mobile navbar and footer.
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#2D2D2A] mb-1">
-                      Campus Tagline / Subtitle
-                    </label>
-                    <input
-                      type="text"
-                      value={siteTaglineInput}
-                      onChange={(e) => setSiteTaglineInput(e.target.value)}
-                      placeholder="e.g. University of Ilorin Mini Campus Marketplace"
-                      className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2.5 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-                    />
-                    <span className="text-[10px] text-[#7A7A6A] mt-1 block">
-                      Appears beneath the main brand name in header and metadata.
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#2D2D2A] mb-1">
-                      Short Initials / Mobile Badge
-                    </label>
-                    <input
-                      type="text"
-                      value={siteShortNameInput}
-                      onChange={(e) => setSiteShortNameInput(e.target.value)}
-                      placeholder="e.g. C'IO or Mini Campus"
-                      className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2.5 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-                    />
-                    <span className="text-[10px] text-[#7A7A6A] mt-1 block">
-                      Compact identifier for mobile headers and announcement pills.
-                    </span>
-                  </div>
-
-                  {/* Live Branding Preview Box */}
-                  <div className="p-3.5 rounded-2xl bg-[#0B0B0A] text-white border border-white/10 space-y-1.5 mt-2">
-                    <span className="text-[10px] text-white/50 uppercase tracking-wider font-bold block">
-                      Live Header Preview:
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-[#1E1E1C] border border-white/20 flex items-center justify-center text-white text-xs font-serif font-bold">
-                        {siteNameInput.charAt(0) || 'C'}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-serif font-bold text-sm text-white">
-                            {siteNameInput || "C'IO"}
-                          </span>
-                          <span className="text-[9px] bg-white/10 text-white font-medium px-1.5 py-0.2 rounded-full border border-white/15">
-                            {siteShortNameInput || "Mini Campus"}
-                          </span>
-                        </div>
-                        <div className="text-[9px] text-white/60">
-                          {siteTaglineInput || "University of Ilorin Mini Campus Marketplace"}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={brandingLoading}
-                    className="w-full bg-[#5A5A40] hover:bg-[#474732] text-white font-bold py-2.5 rounded-full text-xs transition shadow-xs disabled:opacity-60 cursor-pointer mt-2"
-                  >
-                    {brandingLoading ? 'Syncing Website Name...' : 'Save & Sync Website Name'}
-                  </button>
-                </form>
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Change Admin Password */}
+          <div className="bg-white p-6 rounded-3xl border border-[#E0E0D5] shadow-xs">
+            <div className="flex items-center gap-2 mb-4">
+              <Lock className="h-5 w-5 text-[#5A5A40]" />
+              <h3 className="text-base font-serif font-bold text-[#2D2D2A]">Change Admin Password</h3>
             </div>
+            <p className="text-xs text-[#7A7A6A] mb-4">
+              Update the server-side administrator password.
+            </p>
 
-            {/* SECTION 2: WELCOMING POPUP & CAMPUS ANNOUNCEMENT */}
-            <div className="bg-white p-6 rounded-3xl border border-[#E0E0D5] shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-full bg-[#E8E8DF] text-[#5A5A40] flex items-center justify-center">
-                    <Megaphone className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-serif font-bold text-[#2D2D2A]">Home Page Welcoming Popup & Announcement</h3>
-                    <p className="text-[11px] text-[#7A7A6A]">
-                      Pops up whenever users navigate to the home page. Admins can edit the message, title, and safety tips anytime.
-                    </p>
-                  </div>
-                </div>
-
-                {announcementMsg && (
-                  <div className="my-3 p-3 rounded-2xl bg-green-50 text-green-700 border border-green-200 text-xs flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    <span>{announcementMsg}</span>
-                  </div>
-                )}
-
-                <form onSubmit={handleSaveAnnouncement} className="space-y-3.5 mt-4">
-                  <div className="p-3 rounded-2xl bg-[#F5F5F0] border border-[#E0E0D5] flex items-center justify-between">
-                    <div>
-                      <h4 className="font-bold text-xs text-[#2D2D2A]">Enable Home Page Popup</h4>
-                      <p className="text-[11px] text-[#7A7A6A]">
-                        Show welcoming popup whenever visitors navigate to the home marketplace feed.
-                      </p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={welcomePopupEnabled}
-                      onChange={(e) => setWelcomePopupEnabled(e.target.checked)}
-                      className="h-5 w-5 rounded text-[#5A5A40] focus:ring-[#5A5A40] cursor-pointer"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#2D2D2A] mb-1">
-                      Popup Header Title
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={welcomePopupTitle}
-                      onChange={(e) => setWelcomePopupTitle(e.target.value)}
-                      placeholder="Welcome to C'IO Mini Campus Marketplace! 🎓"
-                      className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] font-semibold focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#2D2D2A] mb-1">
-                      Announcement Category / Badge Text
-                    </label>
-                    <input
-                      type="text"
-                      value={welcomePopupBadge}
-                      onChange={(e) => setWelcomePopupBadge(e.target.value)}
-                      placeholder="e.g. Campus Announcement & Safety Guide"
-                      className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#2D2D2A] mb-1">
-                      Welcoming & Announcement Message (Multi-paragraph supported)
-                    </label>
-                    <textarea
-                      rows={4}
-                      required
-                      value={welcomePopupMessage}
-                      onChange={(e) => setWelcomePopupMessage(e.target.value)}
-                      placeholder="Write your welcoming message, safety warnings, semester notes, or instructions for students..."
-                      className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] p-3 text-xs text-[#2D2D2A] leading-relaxed focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-[#2D2D2A] mb-1">
-                        Action Button Label
-                      </label>
-                      <input
-                        type="text"
-                        value={welcomePopupActionText}
-                        onChange={(e) => setWelcomePopupActionText(e.target.value)}
-                        placeholder="Explore Marketplace"
-                        className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-3 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-[#2D2D2A] mb-1">
-                        Top Ticker / Alert Bar Text
-                      </label>
-                      <input
-                        type="text"
-                        value={announcementAlertInput}
-                        onChange={(e) => setAnnouncementAlertInput(e.target.value)}
-                        placeholder="Inspect items in daylight at Mini Campus Gate..."
-                        className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-3 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsPreviewingWelcomeModal(true)}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full border border-[#D0D0C5] text-[#2D2D2A] hover:bg-[#E8E8DF] text-xs font-semibold transition cursor-pointer"
-                    >
-                      <Eye className="h-4 w-4 text-[#5A5A40]" />
-                      <span>Preview Popup</span>
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={announcementLoading}
-                      className="flex-1 bg-[#5A5A40] hover:bg-[#474732] text-white font-bold py-2.5 rounded-full text-xs transition shadow-xs disabled:opacity-60 cursor-pointer"
-                    >
-                      {announcementLoading ? 'Saving...' : 'Save Announcement'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-
-          {/* SECOND ROW: PLATFORM CONTROLS & CHANGE PASSWORD */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Website Settings: Platform Controls */}
-            <div className="bg-white p-6 rounded-3xl border border-[#E0E0D5] shadow-xs">
-              <div className="flex items-center gap-2 mb-4">
-                <SettingsIcon className="h-5 w-5 text-[#5A5A40]" />
-                <h3 className="text-base font-serif font-bold text-[#2D2D2A]">Platform Controls</h3>
-              </div>
-
-              {settingsMsg && (
-                <div className="mb-4 p-3 rounded-2xl bg-green-50 text-green-700 border border-green-200 text-xs flex items-center gap-2">
+            {passwordMsg && (
+              <div
+                className={`mb-4 p-3 rounded-2xl text-xs flex items-center gap-2 ${
+                  passwordMsg.type === 'success'
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
+                }`}
+              >
+                {passwordMsg.type === 'success' ? (
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  <span>{settingsMsg}</span>
-                </div>
-              )}
-
-              <form onSubmit={handleSaveSettings} className="space-y-4">
-                <div className="p-4 rounded-2xl bg-[#F5F5F0] border border-[#E0E0D5] flex items-center justify-between">
-                  <div>
-                    <h4 className="font-bold text-xs text-[#2D2D2A]">Listing Moderation</h4>
-                    <p className="text-[11px] text-[#7A7A6A] mt-0.5">
-                      When enabled, new products require admin approval before becoming visible to buyers.
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={moderationEnabled}
-                    onChange={(e) => setModerationEnabled(e.target.checked)}
-                    className="h-5 w-5 rounded text-[#5A5A40] focus:ring-[#5A5A40] cursor-pointer"
-                  />
-                </div>
-
-                <div className="p-4 rounded-2xl bg-[#F5F5F0] border border-[#E0E0D5] flex items-center justify-between">
-                  <div>
-                    <h4 className="font-bold text-xs text-[#2D2D2A]">User Registration</h4>
-                    <p className="text-[11px] text-[#7A7A6A] mt-0.5">
-                      Allow new students and buyers to register accounts.
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={registrationEnabled}
-                    onChange={(e) => setRegistrationEnabled(e.target.checked)}
-                    className="h-5 w-5 rounded text-[#5A5A40] focus:ring-[#5A5A40] cursor-pointer"
-                  />
-                </div>
-
-                <div className="p-4 rounded-2xl bg-[#F5F5F0] border border-[#E0E0D5]">
-                  <span className="text-xs font-bold text-[#2D2D2A] block mb-1">Official Support Number:</span>
-                  <span className="font-mono font-bold text-sm text-[#5A5A40]">09076930244</span>
-                  <span className="text-[10px] text-[#7A7A6A] block mt-0.5">Standardized across all pages.</span>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full bg-[#5A5A40] hover:bg-[#474732] text-white font-bold py-2.5 rounded-full text-xs transition shadow-xs cursor-pointer"
-                >
-                  Save Platform Controls
-                </button>
-              </form>
-            </div>
-
-            {/* Change Admin Password */}
-            <div className="bg-white p-6 rounded-3xl border border-[#E0E0D5] shadow-xs">
-              <div className="flex items-center gap-2 mb-4">
-                <Lock className="h-5 w-5 text-[#5A5A40]" />
-                <h3 className="text-base font-serif font-bold text-[#2D2D2A]">Change Admin Password</h3>
+                ) : (
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                )}
+                <span>{passwordMsg.text}</span>
               </div>
-              <p className="text-xs text-[#7A7A6A] mb-4">
-                Update the server-side administrator password.
-              </p>
+            )}
 
-              {passwordMsg && (
-                <div
-                  className={`mb-4 p-3 rounded-2xl text-xs flex items-center gap-2 ${
-                    passwordMsg.type === 'success'
-                      ? 'bg-green-50 text-green-700 border border-green-200'
-                      : 'bg-red-50 text-red-700 border border-red-200'
-                  }`}
-                >
-                  {passwordMsg.type === 'success' ? (
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  ) : (
-                    <AlertTriangle className="h-4 w-4 shrink-0" />
-                  )}
-                  <span>{passwordMsg.text}</span>
-                </div>
-              )}
+            <form onSubmit={handleChangePasswordSubmit} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-[#2D2D2A] mb-1">Current Admin Password</label>
+                <input
+                  type="password"
+                  required
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
+                />
+              </div>
 
-              <form onSubmit={handleChangePasswordSubmit} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-bold text-[#2D2D2A] mb-1">Current Admin Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-[#2D2D2A] mb-1">New Admin Password</label>
+                <input
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="At least 6 characters"
+                  className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-[#2D2D2A] mb-1">New Admin Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="At least 6 characters"
-                    className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-[#2D2D2A] mb-1">Confirm New Password</label>
+                <input
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-[#2D2D2A] mb-1">Confirm New Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full rounded-2xl border border-[#E0E0D5] bg-[#F5F5F0] px-4 py-2 text-xs text-[#2D2D2A] focus:bg-white focus:border-[#5A5A40] focus:outline-hidden"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={passwordLoading}
-                  className="w-full bg-[#5A5A40] hover:bg-[#474732] text-white font-bold py-2.5 rounded-full text-xs transition shadow-xs disabled:opacity-60 cursor-pointer"
-                >
-                  {passwordLoading ? 'Updating Password...' : 'Save New Password'}
-                </button>
-              </form>
-            </div>
+              <button
+                type="submit"
+                disabled={passwordLoading}
+                className="w-full bg-[#5A5A40] hover:bg-[#474732] text-white font-bold py-2.5 rounded-full text-xs transition shadow-xs disabled:opacity-60"
+              >
+                {passwordLoading ? 'Updating Password...' : 'Save New Password'}
+              </button>
+            </form>
           </div>
 
-          {/* Admin Preview of Welcome Modal */}
-          {isPreviewingWelcomeModal && (
-            <WelcomeAnnouncementModal
-              isOpen={isPreviewingWelcomeModal}
-              onClose={() => setIsPreviewingWelcomeModal(false)}
-              settings={{
-                ...settings,
-                siteName: siteNameInput.trim() || "C'IO",
-                siteTagline: siteTaglineInput.trim() || "University of Ilorin Mini Campus Marketplace",
-                welcomePopupTitle: welcomePopupTitle.trim(),
-                welcomePopupMessage: welcomePopupMessage.trim(),
-                welcomePopupBadge: welcomePopupBadge.trim(),
-                welcomePopupActionText: welcomePopupActionText.trim(),
-              }}
-            />
-          )}
+          {/* Website Settings */}
+          <div className="bg-white p-6 rounded-3xl border border-[#E0E0D5] shadow-xs">
+            <div className="flex items-center gap-2 mb-4">
+              <SettingsIcon className="h-5 w-5 text-[#5A5A40]" />
+              <h3 className="text-base font-serif font-bold text-[#2D2D2A]">Platform Controls</h3>
+            </div>
+
+            {settingsMsg && (
+              <div className="mb-4 p-3 rounded-2xl bg-green-50 text-green-700 border border-green-200 text-xs flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>{settingsMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSettings} className="space-y-4">
+              <div className="p-4 rounded-2xl bg-[#F5F5F0] border border-[#E0E0D5] flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-xs text-[#2D2D2A]">Listing Moderation</h4>
+                  <p className="text-[11px] text-[#7A7A6A] mt-0.5">
+                    When enabled, new products require admin approval before becoming visible to buyers.
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={moderationEnabled}
+                  onChange={(e) => setModerationEnabled(e.target.checked)}
+                  className="h-5 w-5 rounded text-[#5A5A40] focus:ring-[#5A5A40]"
+                />
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#F5F5F0] border border-[#E0E0D5] flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-xs text-[#2D2D2A]">User Registration</h4>
+                  <p className="text-[11px] text-[#7A7A6A] mt-0.5">
+                    Allow new students and buyers to register accounts.
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={registrationEnabled}
+                  onChange={(e) => setRegistrationEnabled(e.target.checked)}
+                  className="h-5 w-5 rounded text-[#5A5A40] focus:ring-[#5A5A40]"
+                />
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#F5F5F0] border border-[#E0E0D5]">
+                <span className="text-xs font-bold text-[#2D2D2A] block mb-1">Official Support Number:</span>
+                <span className="font-mono font-bold text-sm text-[#5A5A40]">09076930244</span>
+                <span className="text-[10px] text-[#7A7A6A] block mt-0.5">Standardized across all pages.</span>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-[#5A5A40] hover:bg-[#474732] text-white font-bold py-2.5 rounded-full text-xs transition shadow-xs"
+              >
+                Save Platform Controls
+              </button>
+            </form>
+          </div>
         </div>
       )}
 

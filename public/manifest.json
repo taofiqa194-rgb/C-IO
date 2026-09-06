@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "C'IO",
+  "short_name": "C'IO",
+  "description": "The official University of Ilorin Mini Campus Marketplace. Buy and sell student essentials, gadgets, textbooks, and services with verified student accounts, dedicated customer support, and direct WhatsApp ordering.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F5F5F0",
+  "theme_color": "#141413",
+  "categories": ["shopping", "business", "education"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

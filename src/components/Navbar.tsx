@@ -11,7 +11,7 @@ import {
   Headphones,
   SlidersHorizontal,
   LogIn,
-  Megaphone
+  Download
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -27,11 +27,8 @@ interface NavbarProps {
   onToggleFilterDrawer: () => void;
   activeView: string;
   isAdminAuthenticated: boolean;
-  siteName?: string;
-  siteTagline?: string;
-  siteShortName?: string;
-  announcementAlert?: string;
-  onOpenAnnouncement?: () => void;
+  onOpenInstall?: () => void;
+  isInstalled?: boolean;
 }
 
 // Minimalist, modern C'IO insignia mark designed for desktop & mobile
@@ -98,36 +95,18 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleFilterDrawer,
   activeView,
   isAdminAuthenticated,
-  siteName = "C'IO",
-  siteTagline = "University of Ilorin Mini Campus Marketplace",
-  siteShortName = "Mini Campus",
-  announcementAlert,
-  onOpenAnnouncement,
+  onOpenInstall,
+  isInstalled = false,
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-[#141413]/95 backdrop-blur-md border-b border-[#262624] text-white shadow-md">
       {/* Top Campus Alert / Safety Bar - Matte Black */}
       <div className="bg-[#0B0B0A] text-white text-[10px] sm:text-[11px] py-1.5 px-3 sm:px-4 text-center font-medium flex items-center justify-center gap-1.5 sm:gap-2 border-b border-white/10">
-        {onOpenAnnouncement ? (
-          <button
-            onClick={onOpenAnnouncement}
-            className="inline-flex items-center gap-1 bg-white/10 hover:bg-[#8E8E6F]/30 text-white px-2 py-0.5 rounded font-bold text-[9px] sm:text-[10px] uppercase tracking-wider shrink-0 border border-white/15 hover:border-[#8E8E6F] transition cursor-pointer"
-            title="Open Welcome Announcement & Campus Safety Guide"
-          >
-            <Megaphone className="h-2.5 w-2.5 text-[#8E8E6F]" />
-            <span>Announcement</span>
-          </button>
-        ) : (
-          <span className="bg-white/10 text-white px-1.5 py-0.5 rounded font-bold text-[9px] sm:text-[10px] uppercase tracking-wider shrink-0 border border-white/15">
-            {siteShortName || "Mini Campus"}
-          </span>
-        )}
-        <span 
-          onClick={onOpenAnnouncement}
-          className={`truncate text-white/90 ${onOpenAnnouncement ? 'cursor-pointer hover:text-white transition' : ''}`}
-          title={onOpenAnnouncement ? "Click to view campus announcement" : undefined}
-        >
-          {announcementAlert || "Inspect items in daylight at Mini Campus Gate or Student Center before payment."}
+        <span className="bg-white/10 text-white px-1.5 py-0.5 rounded font-bold text-[9px] sm:text-[10px] uppercase tracking-wider shrink-0 border border-white/15">
+          Mini Campus
+        </span>
+        <span className="truncate text-white/90">
+          Inspect items in daylight at Mini Campus Gate or Student Center before payment.
         </span>
         <span className="hidden md:inline text-white/70 font-mono shrink-0">
           • Support: <strong className="text-white font-normal">{OFFICIAL_SUPPORT_PHONE}</strong>
@@ -147,7 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-serif font-bold text-lg text-white tracking-tight leading-tight group-hover:text-[#D9D9C8] transition">
-                  {siteName}
+                  C'IO
                 </span>
                 <span className="text-[10px] bg-white/10 text-white font-semibold px-2 py-0.5 rounded-full border border-white/15 group-hover:border-[#8E8E6F] transition">
                   Verified Marketplace
@@ -155,7 +134,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
               <div className="flex items-center gap-1 text-[11px] text-white/75 font-medium">
                 <MapPin className="h-2.5 w-2.5 text-white" />
-                <span className="truncate max-w-[220px]">{siteTagline}</span>
+                <span>University of Ilorin Mini Campus</span>
               </div>
             </div>
           </div>
@@ -245,6 +224,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>{isAdminAuthenticated ? 'Admin Console' : 'Admin Login'}</span>
             </button>
 
+            {/* Install PWA App Button */}
+            {!isInstalled && onOpenInstall && (
+              <button
+                id="nav-install-app-btn"
+                onClick={onOpenInstall}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition border cursor-pointer text-white bg-white/10 hover:bg-[#5A5A40]/30 hover:border-[#8E8E6F] border-white/15"
+                title="Install C'IO App on your device"
+              >
+                <Download className="h-3.5 w-3.5 text-white" />
+                <span>Install App</span>
+              </button>
+            )}
+
             {/* Sell Product Button CTA */}
             <button
               id="nav-sell-cta-btn"
@@ -305,20 +297,32 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div>
                 <div className="flex items-center gap-1">
                   <span className="font-serif font-bold text-base text-white tracking-tight leading-tight group-hover:text-[#D9D9C8] transition">
-                    {siteName}
+                    C'IO
                   </span>
                   <span className="text-[9px] bg-white/10 text-white font-semibold px-1.5 py-0.2 rounded-full border border-white/15">
-                    {siteShortName}
+                    Mini Campus
                   </span>
                 </div>
-                <div className="text-[10px] text-white/75 font-medium leading-none truncate max-w-[150px]">
-                  {siteTagline}
+                <div className="text-[10px] text-white/75 font-medium leading-none">
+                  Unilorin Mini Campus
                 </div>
               </div>
             </div>
 
-            {/* Mobile Top-Right Actions: Saved & Auth */}
+            {/* Mobile Top-Right Actions: Install, Saved & Auth */}
             <div className="flex items-center gap-1.5 shrink-0">
+              {!isInstalled && onOpenInstall && (
+                <button
+                  id="mobile-nav-install-btn"
+                  onClick={onOpenInstall}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-white/20 bg-white/10 hover:bg-[#5A5A40]/35 text-white transition text-xs font-semibold cursor-pointer"
+                  title="Install C'IO App"
+                >
+                  <Download className="h-3.5 w-3.5 text-white" />
+                  <span className="text-[10px]">Install</span>
+                </button>
+              )}
+
               <button
                 onClick={onOpenFavorites}
                 className={`relative p-2 rounded-full border border-white/15 bg-white/10 text-white hover:bg-[#5A5A40]/30 hover:border-[#8E8E6F] transition cursor-pointer ${
