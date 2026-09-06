@@ -14,8 +14,14 @@ import {
   Crown,
   Edit3,
   LogIn,
-  X
+  X,
+  AlertCircle,
+  Loader2,
+  Check,
+  Zap,
+  Camera
 } from 'lucide-react';
+import { optimizeImageForUpload, uploadOptimizedImageWithProgress, isJpegImage } from '../utils/imageOptimizer';
 
 interface SellerDashboardProps {
   currentUser: User | null;
@@ -65,8 +71,17 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
   const [sellerPhone, setSellerPhone] = useState(currentUser?.phone || '');
   const [isFeaturedBoost, setIsFeaturedBoost] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formSuccess, setFormSuccess] = useState(false);
   const [formError, setFormError] = useState('');
+
+  // Image Upload State
+  const [uploadedUrl, setUploadedUrl] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'optimizing' | 'uploading' | 'success' | 'error'>('idle');
+  const [uploadError, setUploadError] = useState('');
+  const [imageSizeKb, setImageSizeKb] = useState<number | null>(null);
+  const [originalSizeKb, setOriginalSizeKb] = useState<number | null>(null);
 
   // Edit My Listing State
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
@@ -79,16 +94,59 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
   const [editImageUrl, setEditImageUrl] = useState('');
   const [editLoading, setEditLoading] = useState(false);
 
-  // Handle Image File Upload (converts to base64 data URL)
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Optimized Image File Upload
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImageUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    setUploadError('');
+    setFormError('');
+
+    // Strict client-side JPG/JPEG validation
+    if (!isJpegImage(file)) {
+      setUploadStatus('error');
+      setUploadError('Only JPG or JPEG images are accepted. Please select a photo in .jpg or .jpeg format.');
+      return;
     }
+
+    try {
+      setUploadStatus('optimizing');
+      setUploadProgress(15);
+
+      // Compress and resize client-side to guarantee under 300 KB
+      const optimized = await optimizeImageForUpload(file);
+      
+      // Immediately display high-resolution visual preview
+      setImageUrl(optimized.dataUrl);
+      setImageSizeKb(optimized.sizeKb);
+      setOriginalSizeKb(optimized.originalSizeKb);
+
+      // Trigger instantaneous background upload with real progress
+      setUploadStatus('uploading');
+      setUploadProgress(30);
+
+      const serverUrl = await uploadOptimizedImageWithProgress(optimized, (percent) => {
+        setUploadProgress(percent);
+      });
+
+      setUploadedUrl(serverUrl);
+      setUploadStatus('success');
+      setUploadProgress(100);
+    } catch (err: any) {
+      console.error('Image upload optimization error:', err);
+      setUploadStatus('error');
+      setUploadError(err.message || 'Failed to process image. Please choose another JPEG file.');
+    }
+  };
+
+  const handleSelectPreset = (url: string) => {
+    setImageUrl(url);
+    setUploadedUrl(url);
+    setUploadStatus('success');
+    setUploadProgress(100);
+    setImageSizeKb(null);
+    setOriginalSizeKb(null);
+    setUploadError('');
   };
 
   if (!currentUser) {
@@ -120,6 +178,8 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || isSubmitting) return;
+
     setFormError('');
 
     if (!title.trim()) {
@@ -132,8 +192,20 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
       return;
     }
 
-    const finalImage = imageUrl.trim() || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80';
+    // Check if an image is currently in the middle of uploading
+    if (uploadStatus === 'optimizing' || uploadStatus === 'uploading') {
+      setFormError('Please wait a moment for the image to finish uploading.');
+      return;
+    }
 
+    if (uploadStatus === 'error') {
+      setFormError(uploadError || 'Please select a valid JPEG photo under 300 KB before submitting.');
+      return;
+    }
+
+    const finalImage = uploadedUrl.trim() || imageUrl.trim() || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80';
+
+    setIsSubmitting(true);
     setLoading(true);
     try {
       const newListing: Partial<Listing> = {
@@ -171,12 +243,18 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
         setOriginalPrice('');
         setDescription('');
         setImageUrl('');
+        setUploadedUrl('');
+        setUploadStatus('idle');
+        setUploadProgress(0);
+        setImageSizeKb(null);
+        setOriginalSizeKb(null);
         setIsFeaturedBoost(false);
         setActiveTab('listings');
       }, 1000);
     } catch (err: any) {
       setFormError(err.message || 'Failed to post listing.');
     } finally {
+      setIsSubmitting(false);
       setLoading(false);
     }
   };
@@ -393,19 +471,83 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
               </div>
 
               {/* Image Upload & Presets */}
-              <div>
-                <label className="block text-xs font-bold text-[#2D2D2A] mb-1.5">
-                  Product Image (Upload file or choose a preset photo)
-                </label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-[#2D2D2A]">
+                    Product Photo <span className="text-[#5A5A40] font-normal">(JPG / JPEG only • Max 300 KB)</span> *
+                  </label>
+                  <span className="text-[10px] text-[#7A7A6A] bg-[#F5F5F0] px-2 py-0.5 rounded-full border border-[#E0E0D5]">
+                    Auto-optimized
+                  </span>
+                </div>
+
                 <div className="flex flex-col sm:flex-row items-start gap-4">
-                  <div className="flex-1 space-y-2 w-full">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="block w-full text-xs text-[#7A7A6A] file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-[#5A5A40]/10 file:text-[#5A5A40] hover:file:bg-[#5A5A40]/20 cursor-pointer"
-                    />
-                    
+                  <div className="flex-1 space-y-3 w-full">
+                    {/* File Input */}
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept=".jpg,.jpeg,image/jpeg"
+                        onChange={handleFileChange}
+                        disabled={uploadStatus === 'optimizing' || uploadStatus === 'uploading'}
+                        className="block w-full text-xs text-[#7A7A6A] file:mr-3 file:py-2.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#5A5A40] file:text-white hover:file:bg-[#474732] cursor-pointer disabled:opacity-50"
+                      />
+                    </div>
+
+                    {/* Dynamic Real-time Status / Progress */}
+                    {uploadStatus === 'optimizing' && (
+                      <div className="flex items-center gap-2 text-xs font-semibold text-[#5A5A40] bg-[#5A5A40]/10 px-3 py-2 rounded-xl animate-pulse">
+                        <Loader2 className="h-4 w-4 animate-spin text-[#5A5A40]" />
+                        <span>Optimizing image client-side (resizing & compressing to &lt;300 KB)...</span>
+                      </div>
+                    )}
+
+                    {uploadStatus === 'uploading' && (
+                      <div className="space-y-1.5 bg-[#F5F5F0] p-3 rounded-xl border border-[#E0E0D5]">
+                        <div className="flex items-center justify-between text-xs font-semibold text-[#5A5A40]">
+                          <span className="flex items-center gap-1.5">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Uploading to server...
+                          </span>
+                          <span className="font-mono">{uploadProgress}%</span>
+                        </div>
+                        <div className="w-full bg-[#E0E0D5] rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-[#5A5A40] h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {uploadStatus === 'success' && (
+                      <div className="flex items-center justify-between gap-2 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl">
+                        <span className="flex items-center gap-1.5">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                          <span>
+                            Photo uploaded & ready
+                            {imageSizeKb ? ` (${imageSizeKb} KB${originalSizeKb ? ` • compressed from ${originalSizeKb} KB` : ''})` : ''}
+                          </span>
+                        </span>
+                        <span className="text-[10px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
+                          100%
+                        </span>
+                      </div>
+                    )}
+
+                    {uploadStatus === 'error' && (
+                      <div className="flex items-start gap-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 p-3 rounded-xl">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
+                        <div className="flex-1">
+                          <p className="font-bold">{uploadError}</p>
+                          <p className="text-[10px] text-rose-600 mt-0.5">
+                            Please select a photo in JPG or JPEG format under 300 KB.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Presets */}
                     <div className="pt-1">
                       <span className="text-[10px] uppercase tracking-wider font-bold text-[#7A7A6A] block mb-1">
                         Or pick a sample photo preset:
@@ -415,7 +557,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
                           <button
                             key={preset.label}
                             type="button"
-                            onClick={() => setImageUrl(preset.url)}
+                            onClick={() => handleSelectPreset(preset.url)}
                             className="px-2.5 py-1 rounded-full text-[10px] bg-[#F5F5F0] hover:bg-[#E8E8DF] text-[#2D2D2A] border border-[#E0E0D5] transition"
                           >
                             {preset.label}
@@ -426,9 +568,27 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
                   </div>
 
                   {/* Image Preview Box */}
-                  <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-[#F5F5F0] border border-[#E0E0D5] overflow-hidden flex items-center justify-center shrink-0">
+                  <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-[#F5F5F0] border border-[#E0E0D5] overflow-hidden flex flex-col items-center justify-center shrink-0 relative group">
                     {imageUrl ? (
-                      <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                      <>
+                        <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImageUrl('');
+                            setUploadedUrl('');
+                            setUploadStatus('idle');
+                            setUploadProgress(0);
+                            setImageSizeKb(null);
+                            setOriginalSizeKb(null);
+                            setUploadError('');
+                          }}
+                          className="absolute inset-0 bg-black/50 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 flex items-center justify-center transition"
+                          title="Remove photo"
+                        >
+                          Change
+                        </button>
+                      </>
                     ) : (
                       <div className="text-center p-2 text-[#7A7A6A]">
                         <ImageIcon className="h-6 w-6 mx-auto mb-1 opacity-50 text-[#5A5A40]" />
@@ -443,11 +603,30 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
               <button
                 type="submit"
                 id="submit-new-listing-btn"
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-2 rounded-full bg-[#5A5A40] hover:bg-[#474732] active:bg-[#383827] py-3.5 text-sm font-bold text-white shadow-md transition disabled:opacity-60"
+                disabled={loading || isSubmitting || uploadStatus === 'optimizing' || uploadStatus === 'uploading'}
+                className="w-full flex items-center justify-center gap-2 rounded-full bg-[#5A5A40] hover:bg-[#474732] active:bg-[#383827] py-3.5 text-sm font-bold text-white shadow-md transition disabled:opacity-60 cursor-pointer disabled:cursor-not-allowed"
               >
-                <PlusCircle className="h-5 w-5" />
-                <span>{loading ? 'Posting...' : 'Publish Listing on Mini Campus Marketplace'}</span>
+                {loading || isSubmitting ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Publishing to Marketplace...</span>
+                  </>
+                ) : uploadStatus === 'optimizing' ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Optimizing Photo...</span>
+                  </>
+                ) : uploadStatus === 'uploading' ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Uploading Photo ({uploadProgress}%)...</span>
+                  </>
+                ) : (
+                  <>
+                    <PlusCircle className="h-5 w-5" />
+                    <span>Publish Listing on Mini Campus Marketplace</span>
+                  </>
+                )}
               </button>
             </form>
           </div>

@@ -25,6 +25,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { AuthModal } from './components/AuthModal';
 import { FilterDrawer, FilterState } from './components/FilterDrawer';
+import { ImageRequirementsModal } from './components/ImageRequirementsModal';
 import { 
   Sparkles, 
   ShoppingBag, 
@@ -77,6 +78,7 @@ export default function App() {
   const [authModalInitialTab, setAuthModalInitialTab] = useState<'login' | 'register' | 'profile'>('login');
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const [isImageReqModalOpen, setIsImageReqModalOpen] = useState(false);
   const [prefillComplaint, setPrefillComplaint] = useState<{ category: string; targetListingTitle?: string; sellerName?: string } | null>(null);
 
   // Filter Bar state
@@ -231,6 +233,20 @@ export default function App() {
     }
   };
 
+  // Open Sell with Image Requirements Modal check
+  const handleOpenSell = () => {
+    try {
+      const hideModal = localStorage.getItem('cio_hide_image_requirements') === 'true';
+      if (hideModal) {
+        setActiveView('sell');
+      } else {
+        setIsImageReqModalOpen(true);
+      }
+    } catch {
+      setActiveView('sell');
+    }
+  };
+
   // Filter and Search Pipeline
   const filteredListings = useMemo(() => {
     return listings.filter((item) => {
@@ -295,7 +311,7 @@ export default function App() {
         onSearchChange={setSearchQuery}
         favoritesCount={favorites.length}
         onOpenFavorites={() => setActiveView('favorites')}
-        onOpenSell={() => setActiveView('sell')}
+        onOpenSell={handleOpenSell}
         onOpenSupport={() => {
           setPrefillComplaint(null);
           setActiveView('support');
@@ -336,7 +352,7 @@ export default function App() {
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
-                    onClick={() => setActiveView('sell')}
+                    onClick={handleOpenSell}
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white text-[#5A5A40] text-xs font-bold shadow-xs hover:bg-[#F5F5F0] transition"
                   >
                     <Plus className="h-4 w-4" />
@@ -495,7 +511,7 @@ export default function App() {
                   </p>
                   <div className="mt-5 flex justify-center gap-2">
                     <button
-                      onClick={() => setActiveView('sell')}
+                      onClick={handleOpenSell}
                       className="px-5 py-2.5 rounded-full bg-[#5A5A40] hover:bg-[#474732] text-xs font-bold text-white shadow-xs"
                     >
                       Post First Product
@@ -712,11 +728,25 @@ export default function App() {
             setIsAdminLoginModalOpen(true);
             return;
           }
+          if (view === 'sell') {
+            handleOpenSell();
+            return;
+          }
           if (view === 'support') setPrefillComplaint(null);
           setActiveView(view);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
         favoritesCount={favorites.length}
+      />
+
+      {/* Image Upload Requirements Pre-modal */}
+      <ImageRequirementsModal
+        isOpen={isImageReqModalOpen}
+        onClose={() => setIsImageReqModalOpen(false)}
+        onContinue={() => {
+          setIsImageReqModalOpen(false);
+          setActiveView('sell');
+        }}
       />
     </div>
   );

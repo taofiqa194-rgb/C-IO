@@ -180,6 +180,75 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '15mb' }));
 
+  // Ensure uploads directory exists and is statically served
+  const uploadsDir = path.join(process.cwd(), 'uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use('/uploads', express.static(uploadsDir, {
+    maxAge: '7d',
+    immutable: true,
+  }));
+
+  // ==========================================
+  // FAST IMAGE UPLOAD API
+  // ==========================================
+  app.post('/api/upload', (req, res) => {
+    try {
+      const { imageBase64, filename, sizeKb } = req.body;
+      if (!imageBase64 || typeof imageBase64 !== 'string') {
+        return res.status(400).json({ error: 'No image data provided' });
+      }
+
+      let mimeType = 'image/jpeg';
+      let base64Content = imageBase64;
+
+      if (imageBase64.startsWith('data:')) {
+        const matches = imageBase64.match(/^data:([A-Za-z0-9\/+-]+);base64,(.+)$/);
+        if (!matches || matches.length !== 3) {
+          return res.status(400).json({ error: 'Invalid data URI format' });
+        }
+        mimeType = matches[1].toLowerCase();
+        base64Content = matches[2];
+      }
+
+      // Strict JPG/JPEG validation
+      if (!mimeType.includes('jpeg') && !mimeType.includes('jpg')) {
+        return res.status(400).json({ error: 'Only JPG or JPEG images are permitted.' });
+      }
+
+      const buffer = Buffer.from(base64Content, 'base64');
+      const calculatedKb = Math.round(buffer.length / 1024);
+
+      // Strict 300 KB limit validation
+      if (buffer.length > 300 * 1024) {
+        return res.status(400).json({
+          error: `Image exceeds the 300 KB limit (currently ${calculatedKb} KB). Please compress or resize the photo.`,
+        });
+      }
+
+      const sanitizedName = (filename || 'item')
+        .replace(/\.[^/.]+$/, '')
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .slice(0, 30);
+      const uniqueName = `img_${Date.now()}_${crypto.randomBytes(4).toString('hex')}_${sanitizedName}.jpg`;
+      const filePath = path.join(uploadsDir, uniqueName);
+
+      fs.writeFileSync(filePath, buffer);
+
+      const publicUrl = `/uploads/${uniqueName}`;
+      return res.json({
+        success: true,
+        url: publicUrl,
+        filename: uniqueName,
+        sizeKb: calculatedKb,
+      });
+    } catch (err: any) {
+      console.error('Upload processing error:', err);
+      return res.status(500).json({ error: err.message || 'Failed to save uploaded image' });
+    }
+  });
+
   // Middleware to authenticate admin
   function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
     const token = (req.headers['x-admin-token'] as string) || (req.headers.authorization?.replace('Bearer ', '') as string);

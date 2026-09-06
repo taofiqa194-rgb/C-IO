@@ -91,14 +91,26 @@ export async function fileToBase64(file: File): Promise<string> {
   });
 }
 
-// Upload file to Firebase Storage with reliable base64 fallback
+// Fast Image Upload with local /api/upload and zero-latency fallback
 export async function uploadImageFile(path: string, file: File): Promise<string> {
   try {
-    const storageRef = ref(storage, path);
-    const snapshot = await uploadBytes(storageRef, file);
-    return await getDownloadURL(snapshot.ref);
+    const base64 = await fileToBase64(file);
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageBase64: base64,
+        filename: file.name,
+        sizeKb: Math.round(file.size / 1024),
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.url) return data.url;
+    }
+    return base64;
   } catch (err) {
-    console.warn('Firebase Storage upload fell back to local data URL:', err);
+    console.warn('Fast /api/upload failed, using base64 fallback:', err);
     return await fileToBase64(file);
   }
 }
@@ -413,13 +425,20 @@ export async function createProductListing(
     mainImageUrl = await uploadImageFile(`products/${user.uid}/${Date.now()}_${imageFile.name}`, imageFile);
   } else if (mainImageUrl.startsWith('data:image/')) {
     try {
-      const res = await fetch(mainImageUrl);
-      const blob = await res.blob();
-      const storageRef = ref(storage, `products/${user.uid}/${Date.now()}_listing.jpg`);
-      const snap = await uploadBytes(storageRef, blob, { contentType: blob.type || 'image/jpeg' });
-      mainImageUrl = await getDownloadURL(snap.ref);
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: mainImageUrl,
+          filename: 'listing.jpg',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) mainImageUrl = data.url;
+      }
     } catch (e) {
-      console.warn('Storage upload fallback:', e);
+      console.warn('Fast upload endpoint fallback to direct data URI:', e);
     }
   }
 
@@ -608,13 +627,18 @@ export async function updateProductListing(
     }
   } else if (updatePayload.imageUrl && typeof updatePayload.imageUrl === 'string' && updatePayload.imageUrl.startsWith('data:image/')) {
     try {
-      const user = auth.currentUser;
-      const uid = user ? user.uid : 'admin';
-      const res = await fetch(updatePayload.imageUrl);
-      const blob = await res.blob();
-      const storageRef = ref(storage, `products/${uid}/${Date.now()}_listing.jpg`);
-      const snap = await uploadBytes(storageRef, blob, { contentType: blob.type || 'image/jpeg' });
-      updatePayload.imageUrl = await getDownloadURL(snap.ref);
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: updatePayload.imageUrl,
+          filename: 'listing.jpg',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) updatePayload.imageUrl = data.url;
+      }
     } catch (e) {
       console.warn('Storage upload fallback:', e);
     }
