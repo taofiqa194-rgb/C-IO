@@ -871,6 +871,41 @@ async function startServer() {
   });
 
   // ==========================================
+  // PWA SERVICE WORKER & MANIFEST HANDLERS
+  // ==========================================
+  app.get('/sw.js', (req, res) => {
+    const candidatePaths = [
+      path.join(process.cwd(), 'dist', 'sw.js'),
+      path.join(process.cwd(), 'public', 'sw.js'),
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+        res.setHeader('Service-Worker-Allowed', '/');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        return res.sendFile(p);
+      }
+    }
+    return res.status(404).send('Service Worker not found');
+  });
+
+  app.get(['/manifest.json', '/manifest.webmanifest'], (req, res) => {
+    const candidatePaths = [
+      path.join(process.cwd(), 'public', 'manifest.json'),
+      path.join(process.cwd(), 'dist', 'manifest.json'),
+      path.join(process.cwd(), 'dist', 'manifest.webmanifest'),
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        res.setHeader('Content-Type', 'application/manifest+json; charset=UTF-8');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        return res.sendFile(p);
+      }
+    }
+    return res.status(404).send('Manifest not found');
+  });
+
+  // ==========================================
   // VITE MIDDLEWARE / PRODUCTION STATIC
   // ==========================================
   if (process.env.NODE_ENV !== 'production') {

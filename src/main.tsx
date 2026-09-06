@@ -2,15 +2,17 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
-import { registerSW } from 'virtual:pwa-register';
-
-// Register PWA Service Worker for offline capability & installability
+// Register PWA Service Worker for offline capability & Chrome installability
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  registerSW({
-    immediate: true,
-    onRegisterError(error) {
-      console.warn('C\'IO Service Worker registration error:', error);
-    },
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .then((registration) => {
+        console.log('C\'IO Service Worker registered with scope:', registration.scope);
+      })
+      .catch((error) => {
+        console.warn('C\'IO Service Worker registration error:', error);
+      });
   });
 }
 
