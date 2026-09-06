@@ -97,6 +97,8 @@ export interface ComplaintTicket {
 
 export interface PlatformSettings {
   siteName: string;
+  siteTagline?: string;
+  siteShortName?: string;
   officialPhone: string;
   listingModerationEnabled: boolean;
   registrationEnabled: boolean;
@@ -108,6 +110,15 @@ export interface PlatformSettings {
   allowGuestBrowsing?: boolean;
   requireMatricVerificationForSelling?: boolean;
   maintenanceMode?: boolean;
+
+  // Welcoming Message & Campus Announcement (Admin Configurable)
+  welcomePopupEnabled?: boolean;
+  welcomePopupTitle?: string;
+  welcomePopupMessage?: string;
+  welcomePopupBadge?: string;
+  welcomePopupActionText?: string;
+  announcementAlert?: string;
+  announcementUpdatedAt?: string;
 }
 
 export interface PlatformStats {

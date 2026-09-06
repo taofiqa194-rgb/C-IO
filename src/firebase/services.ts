@@ -872,11 +872,36 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
   const snap = await getDoc(settingDocRef);
 
   if (snap.exists()) {
-    return snap.data() as PlatformSettings;
+    const data = snap.data() as PlatformSettings;
+    return {
+      siteName: data.siteName || "C'IO",
+      siteTagline: data.siteTagline || "University of Ilorin Mini Campus Marketplace",
+      siteShortName: data.siteShortName || "C'IO",
+      officialPhone: data.officialPhone || OFFICIAL_SUPPORT_PHONE,
+      listingModerationEnabled: Boolean(data.listingModerationEnabled),
+      registrationEnabled: data.registrationEnabled !== false,
+      listingFeeNaira: data.listingFeeNaira ?? 0,
+      featuredBoostFeeNaira: data.featuredBoostFeeNaira ?? 500,
+      vendorSubscriptionSemesterFee: data.vendorSubscriptionSemesterFee ?? 2500,
+      platformSupportPhone: data.platformSupportPhone || OFFICIAL_SUPPORT_PHONE,
+      platformSupportWhatsApp: data.platformSupportWhatsApp || OFFICIAL_SUPPORT_WHATSAPP,
+      allowGuestBrowsing: data.allowGuestBrowsing !== false,
+      requireMatricVerificationForSelling: Boolean(data.requireMatricVerificationForSelling),
+      maintenanceMode: Boolean(data.maintenanceMode),
+      welcomePopupEnabled: data.welcomePopupEnabled !== false,
+      welcomePopupTitle: data.welcomePopupTitle || "Welcome to C'IO Mini Campus Marketplace! 🎓",
+      welcomePopupMessage: data.welcomePopupMessage || "Welcome to the official University of Ilorin Mini Campus student marketplace! Easily buy and sell textbooks, gadgets, hostel accessories, and student passes. Always inspect items in daylight at Mini Campus Gate or the Student Center before making payment.",
+      welcomePopupBadge: data.welcomePopupBadge || "Campus Announcement & Safety Notice",
+      welcomePopupActionText: data.welcomePopupActionText || "Explore Marketplace",
+      announcementAlert: data.announcementAlert || "Inspect items in daylight at Mini Campus Gate or Student Center before payment.",
+      announcementUpdatedAt: data.announcementUpdatedAt || new Date().toISOString(),
+    };
   }
 
   const defaultSettings: PlatformSettings = {
-    siteName: "C'IO — University of Ilorin Mini Campus Marketplace",
+    siteName: "C'IO",
+    siteTagline: "University of Ilorin Mini Campus Marketplace",
+    siteShortName: "C'IO",
     officialPhone: OFFICIAL_SUPPORT_PHONE,
     listingModerationEnabled: false,
     registrationEnabled: true,
@@ -888,13 +913,60 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     allowGuestBrowsing: true,
     requireMatricVerificationForSelling: false,
     maintenanceMode: false,
+    welcomePopupEnabled: true,
+    welcomePopupTitle: "Welcome to C'IO Mini Campus Marketplace! 🎓",
+    welcomePopupMessage: "Welcome to the official University of Ilorin Mini Campus student marketplace! Easily buy and sell textbooks, gadgets, hostel accessories, and student passes. Always inspect items in daylight at Mini Campus Gate or the Student Center before making payment.",
+    welcomePopupBadge: "Campus Announcement & Safety Notice",
+    welcomePopupActionText: "Explore Marketplace",
+    announcementAlert: "Inspect items in daylight at Mini Campus Gate or Student Center before payment.",
+    announcementUpdatedAt: new Date().toISOString(),
   };
 
   await setDoc(settingDocRef, defaultSettings).catch(() => {});
   return defaultSettings;
 }
 
+export function subscribeToPlatformSettings(callback: (settings: PlatformSettings) => void): () => void {
+  const settingDocRef = doc(db, 'settings', 'global');
+  return onSnapshot(
+    settingDocRef,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as PlatformSettings;
+        callback({
+          siteName: data.siteName || "C'IO",
+          siteTagline: data.siteTagline || "University of Ilorin Mini Campus Marketplace",
+          siteShortName: data.siteShortName || "C'IO",
+          officialPhone: data.officialPhone || OFFICIAL_SUPPORT_PHONE,
+          listingModerationEnabled: Boolean(data.listingModerationEnabled),
+          registrationEnabled: data.registrationEnabled !== false,
+          listingFeeNaira: data.listingFeeNaira ?? 0,
+          featuredBoostFeeNaira: data.featuredBoostFeeNaira ?? 500,
+          vendorSubscriptionSemesterFee: data.vendorSubscriptionSemesterFee ?? 2500,
+          platformSupportPhone: data.platformSupportPhone || OFFICIAL_SUPPORT_PHONE,
+          platformSupportWhatsApp: data.platformSupportWhatsApp || OFFICIAL_SUPPORT_WHATSAPP,
+          allowGuestBrowsing: data.allowGuestBrowsing !== false,
+          requireMatricVerificationForSelling: Boolean(data.requireMatricVerificationForSelling),
+          maintenanceMode: Boolean(data.maintenanceMode),
+          welcomePopupEnabled: data.welcomePopupEnabled !== false,
+          welcomePopupTitle: data.welcomePopupTitle || "Welcome to C'IO Mini Campus Marketplace! 🎓",
+          welcomePopupMessage: data.welcomePopupMessage || "Welcome to the official University of Ilorin Mini Campus student marketplace! Easily buy and sell textbooks, gadgets, hostel accessories, and student passes. Always inspect items in daylight at Mini Campus Gate or the Student Center before making payment.",
+          welcomePopupBadge: data.welcomePopupBadge || "Campus Announcement & Safety Notice",
+          welcomePopupActionText: data.welcomePopupActionText || "Explore Marketplace",
+          announcementAlert: data.announcementAlert || "Inspect items in daylight at Mini Campus Gate or Student Center before payment.",
+          announcementUpdatedAt: data.announcementUpdatedAt || new Date().toISOString(),
+        });
+      } else {
+        getPlatformSettings().then(callback).catch(() => {});
+      }
+    },
+    (err) => {
+      console.warn('Settings real-time subscription error:', err);
+    }
+  );
+}
+
 export async function updatePlatformSettings(settings: Partial<PlatformSettings>): Promise<void> {
   const settingDocRef = doc(db, 'settings', 'global');
-  await setDoc(settingDocRef, settings, { merge: true });
+  await setDoc(settingDocRef, { ...settings, updatedAt: new Date().toISOString() }, { merge: true });
 }

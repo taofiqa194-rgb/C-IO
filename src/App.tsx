@@ -26,6 +26,7 @@ import { AdminLoginModal } from './components/AdminLoginModal';
 import { AuthModal } from './components/AuthModal';
 import { FilterDrawer, FilterState } from './components/FilterDrawer';
 import { ImageRequirementsModal } from './components/ImageRequirementsModal';
+import { WelcomeAnnouncementModal } from './components/WelcomeAnnouncementModal';
 import { 
   Sparkles, 
   ShoppingBag, 
@@ -79,6 +80,7 @@ export default function App() {
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [isImageReqModalOpen, setIsImageReqModalOpen] = useState(false);
+  const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState(false);
   const [prefillComplaint, setPrefillComplaint] = useState<{ category: string; targetListingTitle?: string; sellerName?: string } | null>(null);
 
   // Filter Bar state
@@ -124,11 +126,41 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Real-time Platform Settings subscription (site name, announcements, branding)
+  useEffect(() => {
+    const unsubscribeSettings = api.subscribeSettings((realtimeSettings) => {
+      setSettings(realtimeSettings);
+    });
+    return () => unsubscribeSettings();
+  }, []);
+
+  // Sync document title dynamically with website name & tagline
+  useEffect(() => {
+    if (settings.siteName) {
+      document.title = `${settings.siteName} | ${settings.siteTagline || "University of Ilorin Mini Campus Marketplace"}`;
+    }
+  }, [settings.siteName, settings.siteTagline]);
+
+  // Whenever the user navigates to the home page ('feed'), popup welcoming message
+  useEffect(() => {
+    if (activeView === 'feed') {
+      if (settings.welcomePopupEnabled !== false) {
+        setIsWelcomeModalOpen(true);
+      }
+    } else {
+      setIsWelcomeModalOpen(false);
+    }
+  }, [activeView, settings.welcomePopupEnabled]);
+
   // Load backend data
   const loadData = useCallback(async () => {
     try {
-      const prods = await api.getProducts();
+      const [prods, fetchedSettings] = await Promise.all([
+        api.getProducts(),
+        api.getSettings(),
+      ]);
       setListings(prods);
+      setSettings(fetchedSettings);
 
       // Check current user session
       const userRes = await api.checkUserAuth();
@@ -143,14 +175,12 @@ export default function App() {
       setIsAdminAuthenticated(adminRes.authenticated);
 
       if (adminRes.authenticated) {
-        const [fetchedUsers, fetchedReports, fetchedSettings] = await Promise.all([
+        const [fetchedUsers, fetchedReports] = await Promise.all([
           api.getUsers(),
           api.getReports(),
-          api.getSettings(),
         ]);
         setUsers(fetchedUsers);
         setComplaints(fetchedReports);
-        setSettings(fetchedSettings);
       }
     } catch (err) {
       console.error('Failed to load initial data:', err);
@@ -330,6 +360,11 @@ export default function App() {
         onToggleFilterDrawer={() => setIsFilterDrawerOpen(true)}
         activeView={activeView}
         isAdminAuthenticated={isAdminAuthenticated}
+        siteName={settings.siteName}
+        siteTagline={settings.siteTagline}
+        siteShortName={settings.siteShortName}
+        announcementAlert={settings.announcementAlert}
+        onOpenAnnouncement={() => setIsWelcomeModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -539,7 +574,7 @@ export default function App() {
               <div>
                 <span className="text-xs font-bold uppercase text-[#5A5A40] tracking-wider flex items-center gap-1.5">
                   <ShieldCheck className="h-4 w-4" />
-                  C&apos;IO — University of Ilorin Mini Campus Help Desk
+                  {settings.siteName || "C'IO"} — {settings.siteTagline || "University of Ilorin Mini Campus Help Desk"}
                 </span>
                 <h4 className="text-base font-serif font-bold text-[#2D2D2A] mt-1">
                   Have an issue or need student verification?
@@ -561,7 +596,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => {
-                    const msg = `Hello C'IO Support (University of Ilorin Mini Campus Marketplace), I need assistance.`;
+                    const msg = `Hello ${settings.siteName || "C'IO"} Support (${settings.siteTagline || "University of Ilorin Mini Campus Marketplace"}), I need assistance.`;
                     window.open(`https://wa.me/${OFFICIAL_SUPPORT_WHATSAPP}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
                   }}
                   className="px-4 py-2.5 rounded-full bg-[#25D366] hover:bg-[#20ba5a] text-white text-xs font-bold shadow-xs transition flex items-center gap-1.5"
@@ -747,6 +782,13 @@ export default function App() {
           setIsImageReqModalOpen(false);
           setActiveView('sell');
         }}
+      />
+
+      {/* Home Page Welcoming Popup & Announcement Modal */}
+      <WelcomeAnnouncementModal
+        isOpen={isWelcomeModalOpen}
+        onClose={() => setIsWelcomeModalOpen(false)}
+        settings={settings}
       />
     </div>
   );

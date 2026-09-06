@@ -28,6 +28,7 @@ import {
   removeUserAccount,
   getPlatformSettings as fetchPlatformSettings,
   updatePlatformSettings as savePlatformSettings,
+  subscribeToPlatformSettings,
 } from '../firebase/services';
 import { auth, db } from '../firebase/config';
 import { collection, getDocs, query, where, doc, getDoc, setDoc } from 'firebase/firestore';
@@ -43,7 +44,9 @@ export const api = {
     } catch (e) {
       console.warn('Failed to load settings from Firestore, returning defaults:', e);
       return {
-        siteName: "C'IO — University of Ilorin Mini Campus Marketplace",
+        siteName: "C'IO",
+        siteTagline: "University of Ilorin Mini Campus Marketplace",
+        siteShortName: "C'IO",
         officialPhone: '09076930244',
         listingModerationEnabled: false,
         registrationEnabled: true,
@@ -55,8 +58,18 @@ export const api = {
         allowGuestBrowsing: true,
         requireMatricVerificationForSelling: false,
         maintenanceMode: false,
+        welcomePopupEnabled: true,
+        welcomePopupTitle: "Welcome to C'IO Mini Campus Marketplace! 🎓",
+        welcomePopupMessage: "Welcome to the official University of Ilorin Mini Campus student marketplace! Easily buy and sell textbooks, gadgets, hostel accessories, and student passes. Always inspect items in daylight at Mini Campus Gate or the Student Center before making payment.",
+        welcomePopupBadge: "Campus Announcement & Safety Notice",
+        welcomePopupActionText: "Explore Marketplace",
+        announcementAlert: "Inspect items in daylight at Mini Campus Gate or Student Center before payment.",
       };
     }
+  },
+
+  subscribeSettings(callback: (settings: PlatformSettings) => void): () => void {
+    return subscribeToPlatformSettings(callback);
   },
 
   async updateSettings(settings: Partial<PlatformSettings>): Promise<PlatformSettings> {
