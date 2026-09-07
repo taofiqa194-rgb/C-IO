@@ -108,7 +108,66 @@ export interface PlatformSettings {
   allowGuestBrowsing?: boolean;
   requireMatricVerificationForSelling?: boolean;
   maintenanceMode?: boolean;
+  // Announcement settings
+  announcementEnabled?: boolean;
+  announcementTitle?: string;
+  announcementMessage?: string;
+  announcementType?: 'verified' | 'notice' | 'alert' | 'event';
+  announcementCategory?: string;
+  announcementDate?: string;
+  // TikTok-style Verified Badge settings
+  verifiedBadgeColor?: 'blue' | 'red';
 }
+
+export interface NavMenuNames {
+  filters: string;
+  support: string;
+  saved: string;
+  admin: string;
+  postItem: string;
+  login: string;
+}
+
+export interface SiteHeaderSettings {
+  siteName: string;
+  shortSiteName: string;
+  logoUrl?: string;
+  logoVisible: boolean;
+  tagline: string;
+  subtitle: string;
+  headerBgColor: string;
+  headerTextColor: string;
+  headerAccentColor: string;
+  searchPlaceholder: string;
+  navMenuNames: NavMenuNames;
+  announcementText: string;
+  announcementVisible: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export const DEFAULT_HEADER_SETTINGS: SiteHeaderSettings = {
+  siteName: "C'IO — University of Ilorin Mini Campus Marketplace",
+  shortSiteName: "C'IO",
+  logoUrl: "",
+  logoVisible: true,
+  tagline: "Verified Marketplace",
+  subtitle: "University of Ilorin Mini Campus",
+  headerBgColor: "#141413",
+  headerTextColor: "#FFFFFF",
+  headerAccentColor: "#8E8E6F",
+  searchPlaceholder: "Search products at University of Ilorin Mini Campus...",
+  navMenuNames: {
+    filters: "Filters",
+    support: "Support",
+    saved: "Saved",
+    admin: "Admin Console",
+    postItem: "Post Item",
+    login: "Log In",
+  },
+  announcementText: "Inspect items in daylight at Mini Campus Gate or Student Center before payment.",
+  announcementVisible: true,
+};
 
 export interface PlatformStats {
   totalListings: number;

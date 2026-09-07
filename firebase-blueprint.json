@@ -105,6 +105,28 @@
         "requireMatricVerificationForSelling": { "type": "boolean" },
         "maintenanceMode": { "type": "boolean" }
       }
+    },
+    "SiteHeaderSettings": {
+      "title": "SiteHeaderSettings",
+      "description": "Header branding, logo, colors, search placeholder, and navigation settings",
+      "type": "object",
+      "properties": {
+        "siteName": { "type": "string" },
+        "shortSiteName": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "logoVisible": { "type": "boolean" },
+        "tagline": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "headerBgColor": { "type": "string" },
+        "headerTextColor": { "type": "string" },
+        "headerAccentColor": { "type": "string" },
+        "searchPlaceholder": { "type": "string" },
+        "navMenuNames": { "type": "object" },
+        "announcementText": { "type": "string" },
+        "announcementVisible": { "type": "boolean" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -127,6 +149,10 @@
     "/settings/{settingId}": {
       "schema": { "$ref": "#/entities/PlatformSettings" },
       "description": "Global marketplace configuration"
+    },
+    "/siteSettings/{settingId}": {
+      "schema": { "$ref": "#/entities/SiteHeaderSettings" },
+      "description": "Website header content and appearance configuration"
     }
   }
 }

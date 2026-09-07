@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { User, Listing, ComplaintTicket, PlatformSettings } from '../types';
+import { User, Listing, ComplaintTicket, PlatformSettings, SiteHeaderSettings, DEFAULT_HEADER_SETTINGS } from '../types';
 import { PRODUCT_CATEGORIES, UNILORIN_CAMPUS_LOCATIONS } from '../data/mockData';
 import { cleanPhoneNumber } from '../utils/whatsapp';
 import { api } from '../utils/api';
 import { isPrimaryAdminEmail } from '../firebase/services';
+import { TikTokVerifiedBadge } from './TikTokVerifiedBadge';
+import { AdminAnnouncementSettings } from './AdminAnnouncementSettings';
+import { AdminWebsiteSettings } from './AdminWebsiteSettings';
 import { 
   ShieldCheck, 
   Users, 
@@ -29,7 +32,11 @@ import {
   Search, 
   Filter, 
   AlertOctagon,
-  X
+  X,
+  Megaphone,
+  Globe,
+  Palette,
+  Layout
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -40,6 +47,10 @@ interface AdminDashboardProps {
   onRefreshData: () => Promise<void>;
   onLogoutAdmin: () => void;
   onViewProduct: (product: Listing) => void;
+  onUpdateSettings?: (settings: Partial<PlatformSettings>) => Promise<void>;
+  headerSettings?: SiteHeaderSettings;
+  onUpdateHeaderSettings?: (settings: SiteHeaderSettings) => Promise<void>;
+  onResetHeaderSettings?: () => Promise<SiteHeaderSettings>;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -50,8 +61,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefreshData,
   onLogoutAdmin,
   onViewProduct,
+  headerSettings,
+  onUpdateHeaderSettings,
+  onResetHeaderSettings,
 }) => {
-  const [activeTab, setActiveTab] = useState<'listings' | 'users' | 'complaints' | 'activity' | 'settings'>('listings');
+  const [activeTab, setActiveTab] = useState<'listings' | 'users' | 'complaints' | 'activity' | 'announcements' | 'website-settings' | 'settings'>('listings');
 
   // Search & Filters
   const [productSearch, setProductSearch] = useState('');
@@ -92,6 +106,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [moderationEnabled, setModerationEnabled] = useState(settings.listingModerationEnabled);
   const [registrationEnabled, setRegistrationEnabled] = useState(settings.registrationEnabled);
   const [settingsMsg, setSettingsMsg] = useState('');
+
+  // Announcement & Website Name Settings State
+  const [siteNameInput, setSiteNameInput] = useState(settings.siteName || "C'IO — University of Ilorin Mini Campus Marketplace");
+  const [officialPhoneInput, setOfficialPhoneInput] = useState(settings.officialPhone || "09076930244");
+  const [siteNameSavedMsg, setSiteNameSavedMsg] = useState('');
+  const [siteNameLoading, setSiteNameLoading] = useState(false);
+
+  const [announcementEnabled, setAnnouncementEnabled] = useState(settings.announcementEnabled !== false);
+  const [announcementTitle, setAnnouncementTitle] = useState(
+    settings.announcementTitle || "Official Campus Announcement: Verified Student Marketplace Guidelines"
+  );
+  const [announcementMessage, setAnnouncementMessage] = useState(
+    settings.announcementMessage || "Welcome to C'IO! To ensure safe transactions across the University of Ilorin Mini Campus, inspect all items in daylight at the Mini Campus Gate or Student Center before making payment. Always verify student credentials with the official verified badge."
+  );
+  const [announcementType, setAnnouncementType] = useState<'verified' | 'notice' | 'alert' | 'event'>(
+    (settings.announcementType as any) || 'verified'
+  );
+  const [announcementCategory, setAnnouncementCategory] = useState(
+    settings.announcementCategory || "Official Notice"
+  );
+  const [announcementDate, setAnnouncementDate] = useState(
+    settings.announcementDate || "Current Semester Notice"
+  );
+  const [announcementSavedMsg, setAnnouncementSavedMsg] = useState('');
+  const [announcementLoading, setAnnouncementLoading] = useState(false);
+
+  // TikTok Verified Badge Color Settings ('blue' or 'red')
+  const [badgeColor, setBadgeColor] = useState<'blue' | 'red'>(
+    (settings.verifiedBadgeColor as any) || 'blue'
+  );
+  const [badgeSavedMsg, setBadgeSavedMsg] = useState('');
+  const [badgeLoading, setBadgeLoading] = useState(false);
 
   // Action Loading states
   const [actionLoading, setActionLoading] = useState(false);
@@ -332,7 +378,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // ==========================================
-  // SETTINGS
+  // SETTINGS & ANNOUNCEMENTS
   // ==========================================
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -346,6 +392,68 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       await onRefreshData();
     } catch (err: any) {
       alert('Error saving settings: ' + err.message);
+    }
+  };
+
+  const handleSaveWebsiteName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!siteNameInput.trim()) {
+      alert('Please enter a valid website name.');
+      return;
+    }
+    setSiteNameLoading(true);
+    try {
+      await api.updateSettings({
+        siteName: siteNameInput.trim(),
+        officialPhone: officialPhoneInput.trim(),
+      });
+      setSiteNameSavedMsg('Website name updated successfully! Changes are live across the site.');
+      setTimeout(() => setSiteNameSavedMsg(''), 3000);
+      await onRefreshData();
+    } catch (err: any) {
+      alert('Error updating website name: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSiteNameLoading(false);
+    }
+  };
+
+  const handleSaveAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAnnouncementLoading(true);
+    try {
+      await api.updateSettings({
+        announcementEnabled,
+        announcementTitle: announcementTitle.trim(),
+        announcementMessage: announcementMessage.trim(),
+        announcementType,
+        announcementCategory: announcementCategory.trim(),
+        announcementDate: announcementDate.trim(),
+        verifiedBadgeColor: badgeColor,
+      });
+      setAnnouncementSavedMsg('Announcement settings saved and published successfully!');
+      setTimeout(() => setAnnouncementSavedMsg(''), 3000);
+      await onRefreshData();
+    } catch (err: any) {
+      alert('Error saving announcement: ' + (err.message || 'Unknown error'));
+    } finally {
+      setAnnouncementLoading(false);
+    }
+  };
+
+  const handleSaveBadgeColor = async (selectedColor: 'blue' | 'red') => {
+    setBadgeColor(selectedColor);
+    setBadgeLoading(true);
+    try {
+      await api.updateSettings({
+        verifiedBadgeColor: selectedColor,
+      });
+      setBadgeSavedMsg(`Verified badge style updated to TikTok ${selectedColor === 'red' ? 'Red' : 'Blue'}!`);
+      setTimeout(() => setBadgeSavedMsg(''), 3000);
+      await onRefreshData();
+    } catch (err: any) {
+      alert('Error updating badge style: ' + (err.message || 'Unknown error'));
+    } finally {
+      setBadgeLoading(false);
     }
   };
 
@@ -427,6 +535,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         >
           <TrendingUp className="h-4 w-4" />
           <span>Marketplace Activity</span>
+        </button>
+
+        <button
+          id="admin-tab-announcements"
+          onClick={() => setActiveTab('announcements')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition shrink-0 ${
+            activeTab === 'announcements'
+              ? 'bg-[#5A5A40] text-white shadow-xs'
+              : 'text-[#2D2D2A] hover:bg-[#E8E8DF]'
+          }`}
+        >
+          <Megaphone className="h-4 w-4" />
+          <span>Announcements & Website Name</span>
+        </button>
+
+        <button
+          id="admin-tab-website-settings"
+          onClick={() => setActiveTab('website-settings')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition shrink-0 ${
+            activeTab === 'website-settings'
+              ? 'bg-[#5A5A40] text-white shadow-xs'
+              : 'text-[#2D2D2A] hover:bg-[#E8E8DF]'
+          }`}
+        >
+          <Layout className="h-4 w-4" />
+          <span>Website Settings</span>
         </button>
 
         <button
@@ -531,6 +665,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </td>
 
                         <td className="px-4 py-3.5">
+                          {prod.sellerMatricVerified ? (
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <TikTokVerifiedBadge color={badgeColor} size="xs" />
+                              <span className={`text-[9px] font-bold uppercase tracking-tight ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
+                                Verified Student
+                              </span>
+                            </div>
+                          ) : prod.sellerRole === 'business' ? (
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <TikTokVerifiedBadge color={badgeColor} size="xs" />
+                              <span className={`text-[9px] font-bold uppercase tracking-tight ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
+                                Verified Store
+                              </span>
+                            </div>
+                          ) : null}
                           <div className="text-[#2D2D2A] font-semibold">{prod.sellerName}</div>
                           <div className="text-[11px] text-[#7A7A6A] truncate max-w-xs">{prod.campusLocation}</div>
                           <div className="text-[10px] font-mono text-[#5A5A40]">{prod.sellerPhone}</div>
@@ -676,6 +825,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               className="w-10 h-10 rounded-full object-cover border border-[#E0E0D5]"
                             />
                             <div>
+                              {u.isMatricVerified ? (
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  <TikTokVerifiedBadge color={badgeColor} size="xs" />
+                                  <span className={`text-[9px] font-bold uppercase tracking-tight ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
+                                    Verified Student
+                                  </span>
+                                </div>
+                              ) : u.role === 'business' ? (
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  <TikTokVerifiedBadge color={badgeColor} size="xs" />
+                                  <span className={`text-[9px] font-bold uppercase tracking-tight ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
+                                    Verified Store
+                                  </span>
+                                </div>
+                              ) : null}
                               <div className="font-bold text-[#2D2D2A]">{u.name}</div>
                               {u.matricNumber && (
                                 <div className="text-[10px] font-mono text-[#5A5A40]">
@@ -1163,6 +1327,119 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </form>
           </div>
+
+          {/* Quick Access to Announcements & Website Name from Settings tab */}
+          <div className="md:col-span-2 pt-4">
+            <div className="flex items-center justify-between gap-4 mb-4">
+              <div>
+                <h3 className="text-base font-serif font-bold text-[#2D2D2A]">
+                  Announcement Banner & Website Name Configuration
+                </h3>
+                <p className="text-xs text-[#7A7A6A]">
+                  Directly edit public announcements, customize platform branding, and adjust the TikTok verified badge style.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('announcements')}
+                className="text-xs font-bold text-[#5A5A40] hover:underline flex items-center gap-1 shrink-0"
+              >
+                <span>Open Full Editor Tab</span>
+                <span>→</span>
+              </button>
+            </div>
+
+            <AdminAnnouncementSettings
+              initialSiteName={settings.siteName || "C'IO — University of Ilorin Mini Campus Marketplace"}
+              initialOfficialPhone={settings.officialPhone || "09076930244"}
+              initialAnnouncementEnabled={settings.announcementEnabled !== false}
+              initialAnnouncementTitle={
+                settings.announcementTitle || "Official Campus Announcement: Verified Student Marketplace Guidelines"
+              }
+              initialAnnouncementMessage={
+                settings.announcementMessage || "Welcome to C'IO! To ensure safe transactions across the University of Ilorin Mini Campus, inspect all items in daylight at the Mini Campus Gate or Student Center before making payment. Always verify student credentials with the official verified badge."
+              }
+              initialAnnouncementType={(settings.announcementType as any) || 'verified'}
+              initialAnnouncementCategory={settings.announcementCategory || 'Official Notice'}
+              initialAnnouncementDate={settings.announcementDate || 'Current Semester Notice'}
+              initialVerifiedBadgeColor={(settings.verifiedBadgeColor as any) || 'blue'}
+              onSaveAnnouncement={async (data) => {
+                await api.updateSettings(data);
+                await onRefreshData();
+              }}
+              onSaveWebsiteName={async (siteName, officialPhone) => {
+                await api.updateSettings({ siteName, officialPhone });
+                await onRefreshData();
+              }}
+              onSaveBadgeColor={async (color) => {
+                await api.updateSettings({ verifiedBadgeColor: color });
+                await onRefreshData();
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* 6. ANNOUNCEMENTS & BRANDING TAB */}
+      {/* ========================================== */}
+      {activeTab === 'announcements' && (
+        <div>
+          <AdminAnnouncementSettings
+            initialSiteName={settings.siteName || "C'IO — University of Ilorin Mini Campus Marketplace"}
+            initialOfficialPhone={settings.officialPhone || "09076930244"}
+            initialAnnouncementEnabled={settings.announcementEnabled !== false}
+            initialAnnouncementTitle={
+              settings.announcementTitle || "Official Campus Announcement: Verified Student Marketplace Guidelines"
+            }
+            initialAnnouncementMessage={
+              settings.announcementMessage || "Welcome to C'IO! To ensure safe transactions across the University of Ilorin Mini Campus, inspect all items in daylight at the Mini Campus Gate or Student Center before making payment. Always verify student credentials with the official verified badge."
+            }
+            initialAnnouncementType={(settings.announcementType as any) || 'verified'}
+            initialAnnouncementCategory={settings.announcementCategory || 'Official Notice'}
+            initialAnnouncementDate={settings.announcementDate || 'Current Semester Notice'}
+            initialVerifiedBadgeColor={(settings.verifiedBadgeColor as any) || 'blue'}
+            onSaveAnnouncement={async (data) => {
+              await api.updateSettings(data);
+              await onRefreshData();
+            }}
+            onSaveWebsiteName={async (siteName, officialPhone) => {
+              await api.updateSettings({ siteName, officialPhone });
+              await onRefreshData();
+            }}
+            onSaveBadgeColor={async (color) => {
+              await api.updateSettings({ verifiedBadgeColor: color });
+              await onRefreshData();
+            }}
+          />
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* 7. WEBSITE SETTINGS (HEADER & BRANDING) TAB */}
+      {/* ========================================== */}
+      {activeTab === 'website-settings' && (
+        <div id="website-settings-tab-panel">
+          <AdminWebsiteSettings
+            currentSettings={headerSettings || DEFAULT_HEADER_SETTINGS}
+            onSaveSettings={async (newSettings) => {
+              if (onUpdateHeaderSettings) {
+                await onUpdateHeaderSettings(newSettings);
+              } else {
+                await api.updateHeaderSettings(newSettings);
+              }
+              await onRefreshData();
+            }}
+            onResetSettings={async () => {
+              if (onResetHeaderSettings) {
+                return await onResetHeaderSettings();
+              } else {
+                const res = await api.resetHeaderSettings();
+                await onRefreshData();
+                return res;
+              }
+            }}
+          />
         </div>
       )}
 

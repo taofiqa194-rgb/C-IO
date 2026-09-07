@@ -25,7 +25,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './config';
-import { User, Listing, ComplaintTicket, PlatformSettings, UserRole } from '../types';
+import { User, Listing, ComplaintTicket, PlatformSettings, UserRole, SiteHeaderSettings, DEFAULT_HEADER_SETTINGS } from '../types';
 import { OFFICIAL_SUPPORT_PHONE, OFFICIAL_SUPPORT_WHATSAPP } from '../data/mockData';
 
 export const PRIMARY_ADMIN_EMAIL = 'admin@unilorinmarketplace.com';
@@ -898,3 +898,90 @@ export async function updatePlatformSettings(settings: Partial<PlatformSettings>
   const settingDocRef = doc(db, 'settings', 'global');
   await setDoc(settingDocRef, settings, { merge: true });
 }
+
+// 6. WEBSITE SETTINGS (HEADER & BRANDING)
+export async function getSiteHeaderSettings(): Promise<SiteHeaderSettings> {
+  try {
+    const headerDocRef = doc(db, 'siteSettings', 'header');
+    const snap = await getDoc(headerDocRef);
+
+    if (snap.exists()) {
+      const data = snap.data();
+      return {
+        ...DEFAULT_HEADER_SETTINGS,
+        ...data,
+        navMenuNames: {
+          ...DEFAULT_HEADER_SETTINGS.navMenuNames,
+          ...(data.navMenuNames || {}),
+        },
+      };
+    }
+
+    // Initialize document in Firestore if not existing
+    await setDoc(headerDocRef, sanitizeForFirestore(DEFAULT_HEADER_SETTINGS)).catch((e) => {
+      console.warn('Could not bootstrap default header settings in Firestore:', e);
+    });
+    return DEFAULT_HEADER_SETTINGS;
+  } catch (err) {
+    console.warn('Error reading header settings from Firestore:', err);
+    return DEFAULT_HEADER_SETTINGS;
+  }
+}
+
+export async function updateSiteHeaderSettings(
+  settings: Partial<SiteHeaderSettings>,
+  adminEmail?: string
+): Promise<SiteHeaderSettings> {
+  const headerDocRef = doc(db, 'siteSettings', 'header');
+  const payload = sanitizeForFirestore({
+    ...settings,
+    updatedAt: new Date().toISOString(),
+    ...(adminEmail ? { updatedBy: adminEmail } : {}),
+  });
+  await setDoc(headerDocRef, payload, { merge: true });
+  return await getSiteHeaderSettings();
+}
+
+export async function resetSiteHeaderSettings(adminEmail?: string): Promise<SiteHeaderSettings> {
+  const headerDocRef = doc(db, 'siteSettings', 'header');
+  const payload = sanitizeForFirestore({
+    ...DEFAULT_HEADER_SETTINGS,
+    updatedAt: new Date().toISOString(),
+    ...(adminEmail ? { updatedBy: adminEmail } : {}),
+  });
+  await setDoc(headerDocRef, payload);
+  return DEFAULT_HEADER_SETTINGS;
+}
+
+export function subscribeToSiteHeaderSettings(
+  callback: (settings: SiteHeaderSettings) => void
+): () => void {
+  try {
+    const headerDocRef = doc(db, 'siteSettings', 'header');
+    return onSnapshot(
+      headerDocRef,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          callback({
+            ...DEFAULT_HEADER_SETTINGS,
+            ...data,
+            navMenuNames: {
+              ...DEFAULT_HEADER_SETTINGS.navMenuNames,
+              ...(data.navMenuNames || {}),
+            },
+          });
+        } else {
+          callback(DEFAULT_HEADER_SETTINGS);
+        }
+      },
+      (err) => {
+        console.warn('Real-time header settings subscription notice:', err);
+      }
+    );
+  } catch (err) {
+    console.warn('Could not setup onSnapshot for siteSettings:', err);
+    return () => {};
+  }
+}
+

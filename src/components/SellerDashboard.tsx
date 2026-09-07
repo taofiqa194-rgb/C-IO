@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Listing, ProductCategory, User, ItemCondition, SubscriptionDuration } from '../types';
+import { TikTokVerifiedBadge } from './TikTokVerifiedBadge';
 import { PRODUCT_CATEGORIES, UNILORIN_CAMPUS_LOCATIONS } from '../data/mockData';
 import { 
   PlusCircle, 
@@ -32,6 +33,7 @@ interface SellerDashboardProps {
   onToggleSold: (listingId: string) => Promise<void>;
   onBoostFeatured: (listingId: string) => Promise<void>;
   onOpenAuth: () => void;
+  badgeColor?: 'blue' | 'red';
 }
 
 const SAMPLE_PRESET_IMAGES = [
@@ -54,6 +56,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
   onToggleSold,
   onBoostFeatured,
   onOpenAuth,
+  badgeColor = 'blue',
 }) => {
   const [activeTab, setActiveTab] = useState<'upload' | 'listings'>('upload');
 
@@ -310,15 +313,16 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
             {currentUser.name.charAt(0)}
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#2D2D2A]">{currentUser.name}</h1>
-              {currentUser.role === 'student' && currentUser.isMatricVerified && (
-                <span className="inline-flex items-center gap-1 text-xs bg-[#5A5A40]/10 text-[#5A5A40] px-2.5 py-0.5 rounded-full font-semibold border border-[#5A5A40]/25">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-[#5A5A40]" />
+            {/* TOP OF PERSON'S NAME: TikTok-style Verified Badge */}
+            {currentUser.role === 'student' && currentUser.isMatricVerified && (
+              <div className="flex items-center gap-1.5 mb-1">
+                <TikTokVerifiedBadge color={badgeColor} size="sm" />
+                <span className={`text-[11px] font-bold tracking-tight uppercase ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
                   Verified Student
                 </span>
-              )}
-            </div>
+              </div>
+            )}
+            <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#2D2D2A]">{currentUser.name}</h1>
             <p className="text-xs text-[#7A7A6A] mt-0.5">
               {currentUser.role === 'student'
                 ? `Matric: ${currentUser.matricNumber || 'Pending'} • ${currentUser.campusLocation}`

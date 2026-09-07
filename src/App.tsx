@@ -4,7 +4,9 @@ import {
   Listing, 
   ComplaintTicket, 
   PlatformSettings, 
-  ProductCategory 
+  ProductCategory,
+  SiteHeaderSettings,
+  DEFAULT_HEADER_SETTINGS
 } from './types';
 import { 
   PRODUCT_CATEGORIES,
@@ -22,6 +24,7 @@ import { WhatsAppOrderModal } from './components/WhatsAppOrderModal';
 import { SellerDashboard } from './components/SellerDashboard';
 import { SupportSection } from './components/SupportSection';
 import { AdminDashboard } from './components/AdminDashboard';
+import { AnnouncementSection } from './components/AnnouncementSection';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { AuthModal } from './components/AuthModal';
 import { FilterDrawer, FilterState } from './components/FilterDrawer';
@@ -61,6 +64,7 @@ export default function App() {
     requireMatricVerificationForSelling: false,
     maintenanceMode: false,
   });
+  const [headerSettings, setHeaderSettings] = useState<SiteHeaderSettings>(DEFAULT_HEADER_SETTINGS);
 
   // User saved favorites (persisted in localStorage)
   const [favorites, setFavorites] = useState<string[]>(() => {
@@ -140,11 +144,40 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Update browser document title when siteName is configured
+  useEffect(() => {
+    if (headerSettings.siteName) {
+      document.title = headerSettings.siteName;
+    } else if (settings.siteName) {
+      document.title = settings.siteName;
+    }
+  }, [headerSettings.siteName, settings.siteName]);
+
+  // Real-time subscription to public site header settings from Cloud Firestore
+  useEffect(() => {
+    const unsubscribeHeader = api.subscribeToHeaderSettings((updated) => {
+      setHeaderSettings(updated);
+    });
+    return () => unsubscribeHeader();
+  }, []);
+
   // Load backend data
   const loadData = useCallback(async () => {
     try {
       const prods = await api.getProducts();
       setListings(prods);
+
+      // Public platform & header settings (loaded for all visitors)
+      try {
+        const [fetchedSettings, fetchedHeaderSettings] = await Promise.all([
+          api.getSettings(),
+          api.getHeaderSettings(),
+        ]);
+        if (fetchedSettings) setSettings(fetchedSettings);
+        if (fetchedHeaderSettings) setHeaderSettings(fetchedHeaderSettings);
+      } catch (e) {
+        console.warn('Could not load public settings:', e);
+      }
 
       // Check current user session
       const userRes = await api.checkUserAuth();
@@ -159,14 +192,12 @@ export default function App() {
       setIsAdminAuthenticated(adminRes.authenticated);
 
       if (adminRes.authenticated) {
-        const [fetchedUsers, fetchedReports, fetchedSettings] = await Promise.all([
+        const [fetchedUsers, fetchedReports] = await Promise.all([
           api.getUsers(),
           api.getReports(),
-          api.getSettings(),
         ]);
         setUsers(fetchedUsers);
         setComplaints(fetchedReports);
-        setSettings(fetchedSettings);
       }
     } catch (err) {
       console.error('Failed to load initial data:', err);
@@ -348,10 +379,23 @@ export default function App() {
         isAdminAuthenticated={isAdminAuthenticated}
         onOpenInstall={triggerManualInstall}
         isInstalled={isInstalled}
+        siteName={headerSettings.siteName || settings.siteName}
+        officialPhone={settings.officialPhone}
+        headerSettings={headerSettings}
       />
 
       {/* Main Container */}
       <main className="flex-1">
+        {/* Verified Campus Announcement Banner */}
+        <AnnouncementSection
+          settings={settings}
+          isAdmin={isAdminAuthenticated}
+          onEditAnnouncement={() => {
+            setActiveView('admin');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        />
+
         {/* VIEW: MAIN FEED or SUBSCRIPTIONS or FAVORITES */}
         {(activeView === 'feed' || activeView === 'subscriptions' || activeView === 'favorites') && (
           <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 space-y-6">
@@ -486,6 +530,7 @@ export default function App() {
                       onToggleFavorite={handleToggleFavorite}
                       onOpenDetails={(item) => setSelectedListing(item)}
                       onOpenWhatsAppOrder={(item) => setWhatsappOrderListing(item)}
+                      badgeColor={settings.verifiedBadgeColor || 'blue'}
                     />
                   ))}
                 </div>
@@ -546,6 +591,7 @@ export default function App() {
                       onToggleFavorite={handleToggleFavorite}
                       onOpenDetails={(item) => setSelectedListing(item)}
                       onOpenWhatsAppOrder={(item) => setWhatsappOrderListing(item)}
+                      badgeColor={settings.verifiedBadgeColor || 'blue'}
                     />
                   ))}
                 </div>
@@ -606,6 +652,7 @@ export default function App() {
               setAuthModalInitialTab('register');
               setIsAuthModalOpen(true);
             }}
+            badgeColor={settings.verifiedBadgeColor || 'blue'}
           />
         )}
 
@@ -627,6 +674,16 @@ export default function App() {
               listings={listings}
               complaints={complaints}
               settings={settings}
+              headerSettings={headerSettings}
+              onUpdateHeaderSettings={async (newSettings) => {
+                await api.updateHeaderSettings(newSettings);
+                setHeaderSettings(newSettings);
+              }}
+              onResetHeaderSettings={async () => {
+                const defaults = await api.resetHeaderSettings();
+                setHeaderSettings(defaults);
+                return defaults;
+              }}
               onRefreshData={loadData}
               onLogoutAdmin={async () => {
                 await api.adminLogout();
@@ -676,6 +733,7 @@ export default function App() {
         isFavorite={selectedListing ? favorites.includes(selectedListing.id) : false}
         onToggleFavorite={handleToggleFavorite}
         currentUser={currentUser || undefined}
+        badgeColor={settings.verifiedBadgeColor || 'blue'}
         onReportListing={(item) => {
           setPrefillComplaint({
             category: 'Scam / Fraud Report',

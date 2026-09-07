@@ -1,4 +1,4 @@
-import { User, Listing, ComplaintTicket, PlatformSettings } from '../types';
+import { User, Listing, ComplaintTicket, PlatformSettings, SiteHeaderSettings, DEFAULT_HEADER_SETTINGS } from '../types';
 import { 
   registerUser, 
   loginUser, 
@@ -28,6 +28,10 @@ import {
   removeUserAccount,
   getPlatformSettings as fetchPlatformSettings,
   updatePlatformSettings as savePlatformSettings,
+  getSiteHeaderSettings as fetchSiteHeaderSettings,
+  updateSiteHeaderSettings as saveSiteHeaderSettings,
+  resetSiteHeaderSettings as resetHeaderSettingsInFirestore,
+  subscribeToSiteHeaderSettings,
 } from '../firebase/services';
 import { auth, db } from '../firebase/config';
 import { collection, getDocs, query, where, doc, getDoc, setDoc } from 'firebase/firestore';
@@ -39,7 +43,8 @@ export const api = {
   // -------------------------------------------------------------
   async getSettings(): Promise<PlatformSettings> {
     try {
-      return await fetchPlatformSettings();
+      const firestoreSettings = await fetchPlatformSettings();
+      return firestoreSettings;
     } catch (e) {
       console.warn('Failed to load settings from Firestore, returning defaults:', e);
       return {
@@ -55,13 +60,67 @@ export const api = {
         allowGuestBrowsing: true,
         requireMatricVerificationForSelling: false,
         maintenanceMode: false,
+        announcementEnabled: true,
+        announcementTitle: "Official Campus Announcement: Verified Student Marketplace Guidelines",
+        announcementMessage: "Welcome to C'IO! To ensure safe transactions across the University of Ilorin Mini Campus, inspect all items in daylight at the Mini Campus Gate or Student Center before making payment. Always verify student credentials with the official verified badge.",
+        announcementType: 'verified',
+        announcementCategory: 'Official Notice',
+        announcementDate: 'Current Semester Notice',
+        verifiedBadgeColor: 'blue',
       };
     }
   },
 
   async updateSettings(settings: Partial<PlatformSettings>): Promise<PlatformSettings> {
-    await savePlatformSettings(settings);
-    return await fetchPlatformSettings();
+    try {
+      await savePlatformSettings(settings);
+    } catch (e) {
+      console.warn('Could not save settings to Firestore:', e);
+    }
+
+    // Also sync to Express backend if admin session exists
+    const token = localStorage.getItem('cio_admin_token');
+    if (token) {
+      try {
+        await fetch('/api/admin/settings', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(settings),
+        });
+      } catch (err) {
+        console.warn('Could not sync settings to /api/admin/settings:', err);
+      }
+    }
+
+    return await this.getSettings();
+  },
+
+  // -------------------------------------------------------------
+  // Website Header & Branding Settings (Firestore siteSettings/header)
+  // -------------------------------------------------------------
+  async getHeaderSettings(): Promise<SiteHeaderSettings> {
+    try {
+      return await fetchSiteHeaderSettings();
+    } catch (e) {
+      console.warn('Failed to load header settings from Firestore, returning defaults:', e);
+      return DEFAULT_HEADER_SETTINGS;
+    }
+  },
+
+  async updateHeaderSettings(settings: Partial<SiteHeaderSettings>, adminEmail?: string): Promise<SiteHeaderSettings> {
+    const updated = await saveSiteHeaderSettings(settings, adminEmail);
+    return updated;
+  },
+
+  async resetHeaderSettings(adminEmail?: string): Promise<SiteHeaderSettings> {
+    return await resetHeaderSettingsInFirestore(adminEmail);
+  },
+
+  subscribeToHeaderSettings(callback: (settings: SiteHeaderSettings) => void): () => void {
+    return subscribeToSiteHeaderSettings(callback);
   },
 
   // -------------------------------------------------------------

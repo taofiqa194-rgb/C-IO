@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Listing, User } from '../types';
+import { TikTokVerifiedBadge } from './TikTokVerifiedBadge';
 import { 
   X, 
   MapPin, 
   Heart, 
   Share2, 
   ShieldCheck, 
-  CheckCircle2, 
   Store, 
   MessageCircle, 
   AlertTriangle, 
@@ -25,6 +25,7 @@ interface ProductDetailModalProps {
   onToggleFavorite: (id: string) => void;
   currentUser?: User;
   onReportListing: (listing: Listing) => void;
+  badgeColor?: 'blue' | 'red';
 }
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
@@ -35,6 +36,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onToggleFavorite,
   currentUser,
   onReportListing,
+  badgeColor = 'blue',
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
@@ -164,21 +166,27 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 {listing.sellerName.charAt(0)}
               </div>
               <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-sm text-[#2D2D2A]">{listing.sellerName}</span>
-                  {listing.sellerRole === 'student' && listing.sellerMatricVerified && (
-                    <span className="inline-flex items-center gap-0.5 text-[11px] bg-[#5A5A40]/10 text-[#5A5A40] px-2 py-0.5 rounded-full font-semibold border border-[#5A5A40]/25">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-[#5A5A40]" />
-                      Student Verified
+                {/* TOP OF PERSON'S NAME: TikTok-style Verified Badge */}
+                {listing.sellerRole === 'student' && listing.sellerMatricVerified && (
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <TikTokVerifiedBadge color={badgeColor} size="sm" />
+                    <span className={`text-[11px] font-bold tracking-tight uppercase ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
+                      Verified Student
                     </span>
-                  )}
-                  {listing.sellerRole === 'business' && (
-                    <span className="inline-flex items-center gap-0.5 text-[11px] bg-[#E8E8DF] text-[#2D2D2A] px-2 py-0.5 rounded-full font-semibold border border-[#E0E0D5]">
-                      <Store className="w-3.5 h-3.5 text-[#5A5A40]" />
-                      Verified Business
+                  </div>
+                )}
+                {listing.sellerRole === 'business' && (
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <TikTokVerifiedBadge color={badgeColor} size="sm" />
+                    <span className={`text-[11px] font-bold tracking-tight uppercase ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
+                      Verified Campus Store
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
+                {/* PERSON'S NAME */}
+                <h4 className="font-serif font-bold text-base text-[#2D2D2A]">
+                  {listing.sellerName}
+                </h4>
 
                 <p className="text-xs text-[#7A7A6A] mt-0.5">
                   {listing.sellerRole === 'student'

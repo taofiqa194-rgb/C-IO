@@ -109,6 +109,13 @@ interface DBData {
     officialPhone: string;
     listingModerationEnabled: boolean;
     registrationEnabled: boolean;
+    announcementEnabled?: boolean;
+    announcementTitle?: string;
+    announcementMessage?: string;
+    announcementType?: 'verified' | 'notice' | 'alert' | 'event';
+    announcementCategory?: string;
+    announcementDate?: string;
+    verifiedBadgeColor?: 'blue' | 'red';
   };
 }
 
@@ -373,7 +380,19 @@ async function startServer() {
 
   // Update website settings
   app.patch('/api/admin/settings', requireAdmin, (req, res) => {
-    const { listingModerationEnabled, siteName, officialPhone, registrationEnabled } = req.body;
+    const { 
+      listingModerationEnabled, 
+      siteName, 
+      officialPhone, 
+      registrationEnabled,
+      announcementEnabled,
+      announcementTitle,
+      announcementMessage,
+      announcementType,
+      announcementCategory,
+      announcementDate,
+      verifiedBadgeColor,
+    } = req.body;
     if (typeof listingModerationEnabled === 'boolean') {
       db.settings.listingModerationEnabled = listingModerationEnabled;
     }
@@ -382,6 +401,15 @@ async function startServer() {
     }
     if (siteName) db.settings.siteName = siteName;
     if (officialPhone) db.settings.officialPhone = officialPhone;
+    if (typeof announcementEnabled === 'boolean') {
+      db.settings.announcementEnabled = announcementEnabled;
+    }
+    if (announcementTitle !== undefined) db.settings.announcementTitle = announcementTitle;
+    if (announcementMessage !== undefined) db.settings.announcementMessage = announcementMessage;
+    if (announcementType !== undefined) db.settings.announcementType = announcementType;
+    if (announcementCategory !== undefined) db.settings.announcementCategory = announcementCategory;
+    if (announcementDate !== undefined) db.settings.announcementDate = announcementDate;
+    if (verifiedBadgeColor !== undefined) db.settings.verifiedBadgeColor = verifiedBadgeColor;
     saveDB();
     res.json({ success: true, settings: db.settings });
   });

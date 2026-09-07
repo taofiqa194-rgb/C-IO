@@ -1,6 +1,7 @@
 import React from 'react';
 import { Listing } from '../types';
-import { Heart, MapPin, CheckCircle2, Store, Sparkles, MessageCircle, Eye } from 'lucide-react';
+import { TikTokVerifiedBadge } from './TikTokVerifiedBadge';
+import { Heart, MapPin, Store, Sparkles, MessageCircle, Eye } from 'lucide-react';
 
 interface ProductCardProps {
   listing: Listing;
@@ -8,6 +9,7 @@ interface ProductCardProps {
   onToggleFavorite: (listingId: string) => void;
   onOpenDetails: (listing: Listing) => void;
   onOpenWhatsAppOrder: (listing: Listing) => void;
+  badgeColor?: 'blue' | 'red';
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -16,6 +18,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onToggleFavorite,
   onOpenDetails,
   onOpenWhatsAppOrder,
+  badgeColor = 'blue',
 }) => {
   return (
     <div
@@ -80,33 +83,50 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
       {/* Card Content */}
       <div className="flex flex-1 flex-col p-3.5 sm:p-4">
-        {/* Seller Info Badge */}
-        <div className="flex items-center gap-1.5 text-xs text-[#7A7A6A] mb-1.5 truncate">
+        {/* Seller Info Badge: TikTok Verified Badge at TOP of Person's Name */}
+        <div className="mb-2 min-w-0">
           {listing.sellerRole === 'student' ? (
-            <div className="flex items-center gap-1 truncate">
-              <span className="font-medium truncate text-[#2D2D2A]">{listing.sellerName}</span>
+            <div className="flex flex-col items-start gap-0.5 min-w-0">
+              {/* TOP OF PERSON'S NAME */}
               {listing.sellerMatricVerified ? (
-                <span 
+                <div 
+                  className="flex items-center gap-1 shrink-0"
                   title={`Verified Student (${listing.sellerMatricNumber || 'Matric Verified'})`}
-                  className="inline-flex items-center gap-1 text-[10px] bg-[#5A5A40]/10 text-[#5A5A40] px-1.5 py-0.5 rounded font-medium shrink-0 border border-[#5A5A40]/20"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#5A5A40]"></span>
-                  Verified
-                </span>
+                  <TikTokVerifiedBadge color={badgeColor} size="sm" />
+                  <span className={`text-[10px] font-bold tracking-tight uppercase ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
+                    Verified Student
+                  </span>
+                </div>
               ) : (
-                <span className="text-[10px] text-[#A0A090] shrink-0">Student</span>
+                <span className="text-[10px] font-medium text-[#8A8A7A]">Student</span>
               )}
+              {/* PERSON'S NAME */}
+              <span className="font-semibold text-xs text-[#2D2D2A] truncate max-w-full">
+                {listing.sellerName}
+              </span>
             </div>
           ) : listing.sellerRole === 'business' ? (
-            <div className="flex items-center gap-1 truncate">
-              <span className="font-medium truncate text-[#2D2D2A]">{listing.sellerBusinessName || listing.sellerName}</span>
-              <span className="inline-flex items-center gap-0.5 text-[10px] bg-[#E8E8DF] text-[#5A5A40] px-1.5 py-0.5 rounded font-medium shrink-0 border border-[#E0E0D5]">
-                <Store className="w-3 h-3 text-[#5A5A40]" />
-                Store
+            <div className="flex flex-col items-start gap-0.5 min-w-0">
+              {/* TOP OF STORE'S NAME */}
+              <div className="flex items-center gap-1 shrink-0">
+                <TikTokVerifiedBadge color={badgeColor} size="sm" />
+                <span className={`text-[10px] font-bold tracking-tight uppercase ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
+                  Verified Store
+                </span>
+              </div>
+              {/* STORE / PERSON'S NAME */}
+              <span className="font-semibold text-xs text-[#2D2D2A] truncate max-w-full">
+                {listing.sellerBusinessName || listing.sellerName}
               </span>
             </div>
           ) : (
-            <span className="font-medium truncate text-[#2D2D2A]">{listing.sellerName}</span>
+            <div className="flex flex-col items-start min-w-0">
+              <span className="text-[10px] text-[#8A8A7A]">Seller</span>
+              <span className="font-semibold text-xs text-[#2D2D2A] truncate max-w-full">
+                {listing.sellerName}
+              </span>
+            </div>
           )}
         </div>
 
