@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { MarketplacePagination } from './components/MarketplacePagination';
+import { SellerProfileModal, SellerProfileData } from './components/SellerProfileModal';
+import { ReportModal } from './components/ReportModal';
+import { NotificationsModal } from './components/NotificationsModal';
 import { 
   User, 
   Listing, 
@@ -6,7 +10,8 @@ import {
   PlatformSettings, 
   ProductCategory,
   SiteHeaderSettings,
-  DEFAULT_HEADER_SETTINGS
+  DEFAULT_HEADER_SETTINGS,
+  AppNotification
 } from './types';
 import { 
   PRODUCT_CATEGORIES,
@@ -102,6 +107,64 @@ export default function App() {
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [isImageReqModalOpen, setIsImageReqModalOpen] = useState(false);
   const [prefillComplaint, setPrefillComplaint] = useState<{ category: string; targetListingTitle?: string; sellerName?: string } | null>(null);
+
+  // Serious Marketplace: Pagination, Seller Profile, Reports, and Notifications
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(12);
+  const [selectedSeller, setSelectedSeller] = useState<SellerProfileData | null>(null);
+  const [reportTarget, setReportTarget] = useState<{
+    type: 'listing' | 'seller';
+    listing?: Listing;
+    sellerName?: string;
+    sellerPhone?: string;
+  } | null>(null);
+  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState<boolean>(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
+    try {
+      const saved = localStorage.getItem('cio_notifications');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      {
+        id: 'notif-1',
+        title: 'Welcome to C’IO Campus Marketplace',
+        message: 'Explore verified student textbooks, electronics, hostel gear, and student subscriptions safely across Unilorin.',
+        createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+        type: 'info',
+        read: false,
+      },
+      {
+        id: 'notif-2',
+        title: 'Safety Tip: Meet at Campus Public Spots',
+        message: 'Always meet buyers or sellers at public campus spots like Mini Campus Gate, Library Quad, or Student Union Building. Inspect goods before payment.',
+        createdAt: new Date(Date.now() - 86400000).toISOString(),
+        type: 'warning',
+        read: false,
+      },
+      {
+        id: 'notif-3',
+        title: 'Listing Expiration & Protection Active',
+        message: 'Listings remain active for 30 days and can be renewed with 1-click in your Seller Dashboard to keep products fresh and relevant.',
+        createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+        type: 'deal',
+        read: true,
+      }
+    ];
+  });
+
+  // Persist notifications locally
+  useEffect(() => {
+    try {
+      localStorage.setItem('cio_notifications', JSON.stringify(notifications));
+    } catch {}
+  }, [notifications]);
+
+  const unreadNotificationsCount = useMemo(() => {
+    return notifications.filter((n) => !n.read).length;
+  }, [notifications]);
 
   // Filter Bar state
   const [activeCategoryPill, setActiveCategoryPill] = useState<string>('All');
@@ -296,6 +359,64 @@ export default function App() {
     );
   };
 
+  // Listing renewal
+  const handleRenewListing = async (listingId: string) => {
+    try {
+      const newExpiration = await api.renewListingExpiration(listingId, 30);
+      setListings((prev) =>
+        prev.map((item) =>
+          item.id === listingId
+            ? { ...item, expiresAt: newExpiration, isExpired: false, status: 'active' }
+            : item
+        )
+      );
+      const renewNotif: AppNotification = {
+        id: 'renew-' + Date.now(),
+        title: 'Listing Renewed (+30 Days)',
+        message: 'Your campus listing has been renewed for 30 more days and is actively promoted.',
+        createdAt: new Date().toISOString(),
+        type: 'success',
+        read: false,
+      };
+      setNotifications((prev) => [renewNotif, ...prev]);
+    } catch (e) {
+      console.warn('Renewal notice:', e);
+    }
+  };
+
+  // Open seller profile modal
+  const handleOpenSellerProfile = (sellerData: SellerProfileData) => {
+    setSelectedSeller(sellerData);
+  };
+
+  // Confirm report
+  const handleConfirmReport = async (reportData: {
+    category: string;
+    message: string;
+    contactEmail?: string;
+    contactPhone?: string;
+  }) => {
+    try {
+      const targetDesc = reportTarget?.type === 'seller'
+        ? `Seller: ${reportTarget.sellerName || 'N/A'} (Phone: ${reportTarget.sellerPhone || 'N/A'})`
+        : `Product: "${reportTarget?.listing?.title || 'N/A'}" (ID: ${reportTarget?.listing?.id}, Seller: ${reportTarget?.sellerName || 'N/A'})`;
+
+      await api.submitReport({
+        category: (reportData.category as any) || 'Reported scams',
+        title: `[${reportTarget?.type.toUpperCase()}] ${reportTarget?.sellerName || reportTarget?.listing?.title || 'Report'}`,
+        description: `${targetDesc}\n\nDetails: ${reportData.message}`,
+        userName: currentUser?.name || 'Concerned Student',
+        userPhone: reportData.contactPhone || currentUser?.phone || 'N/A',
+        listingId: reportTarget?.listing?.id,
+        accusedSellerName: reportTarget?.sellerName,
+      });
+      setReportTarget(null);
+      alert('Thank you. Your report has been submitted to the C’IO moderation team for immediate review.');
+    } catch (e: any) {
+      alert('Failed to submit report. Please try again or reach out to official support.');
+    }
+  };
+
   // Submit Complaint / Report
   const handleSubmitComplaint = async (complaintData: Partial<ComplaintTicket>) => {
     await api.submitReport(complaintData);
@@ -323,7 +444,11 @@ export default function App() {
   // Filter and Search Pipeline
   const filteredListings = useMemo(() => {
     return listings.filter((item) => {
-      // 1. Search query
+      // 1. Expiration check: hide expired items from the public marketplace feed
+      if (item.isExpired) return false;
+      if (item.expiresAt && new Date(item.expiresAt).getTime() < Date.now()) return false;
+
+      // 2. Search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchesTitle = item.title.toLowerCase().includes(query);
@@ -336,7 +461,7 @@ export default function App() {
         }
       }
 
-      // 2. Category Pill Filter
+      // 3. Category Pill Filter
       if (activeCategoryPill !== 'All') {
         if (activeCategoryPill === 'Subscriptions & Digital') {
           if (!item.isSubscription && item.category !== 'Subscriptions & Digital') return false;
@@ -345,7 +470,7 @@ export default function App() {
         }
       }
 
-      // 3. Advanced Drawer Filters
+      // 4. Advanced Drawer Filters
       if (filters.category !== 'All' && item.category !== filters.category) return false;
       if (filters.campusLocation !== 'All' && item.campusLocation !== filters.campusLocation) return false;
       if (filters.condition !== 'All' && item.condition !== filters.condition) return false;
@@ -354,7 +479,7 @@ export default function App() {
       if (filters.onlyBusinesses && item.sellerRole !== 'business') return false;
       if (filters.maxPrice < 200000 && item.price > filters.maxPrice) return false;
 
-      // 4. Active view specific overrides
+      // 5. Active view specific overrides
       if (activeView === 'subscriptions' && !item.isSubscription) return false;
       if (activeView === 'favorites' && !favorites.includes(item.id)) return false;
 
@@ -362,7 +487,7 @@ export default function App() {
     }).sort((a, b) => {
       if (filters.sortBy === 'price_asc') return a.price - b.price;
       if (filters.sortBy === 'price_desc') return b.price - a.price;
-      if (filters.sortBy === 'popular') return b.viewsCount - a.viewsCount;
+      if (filters.sortBy === 'popular') return (b.viewsCount || 0) - (a.viewsCount || 0);
       // Default: featured first, then newest
       if (a.isFeatured && !b.isFeatured) return -1;
       if (!a.isFeatured && b.isFeatured) return 1;
@@ -370,9 +495,25 @@ export default function App() {
     });
   }, [listings, searchQuery, activeCategoryPill, filters, activeView, favorites]);
 
+  // Reset pagination on filter or view changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeCategoryPill, filters, activeView]);
+
+  // Pagination slicing
+  const totalPages = Math.ceil(filteredListings.length / pageSize) || 1;
+  const paginatedListings = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredListings.slice(start, start + pageSize);
+  }, [filteredListings, currentPage, pageSize]);
+
   // Featured listings slice
   const featuredListings = useMemo(() => {
-    return listings.filter((item) => item.isFeatured && !item.isSold);
+    return listings.filter((item) => {
+      if (item.isExpired) return false;
+      if (item.expiresAt && new Date(item.expiresAt).getTime() < Date.now()) return false;
+      return item.isFeatured && !item.isSold;
+    });
   }, [listings]);
 
   return (
@@ -408,6 +549,8 @@ export default function App() {
         siteName={headerSettings.siteName || settings.siteName}
         officialPhone={settings.officialPhone}
         headerSettings={headerSettings}
+        onOpenNotifications={() => setIsNotificationsModalOpen(true)}
+        unreadNotificationsCount={unreadNotificationsCount}
       />
 
       {/* Main Container */}
@@ -559,6 +702,15 @@ export default function App() {
                       onToggleFavorite={handleToggleFavorite}
                       onOpenDetails={(item) => setSelectedListing(item)}
                       onOpenWhatsAppOrder={(item) => setWhatsappOrderListing(item)}
+                      onOpenSellerProfile={handleOpenSellerProfile}
+                      onReport={(item) =>
+                        setReportTarget({
+                          type: 'listing',
+                          listing: item,
+                          sellerName: item.sellerName,
+                          sellerPhone: item.sellerPhone,
+                        })
+                      }
                       badgeColor={settings.verifiedBadgeColor || 'blue'}
                     />
                   ))}
@@ -611,19 +763,50 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-                  {filteredListings.map((listing) => (
-                    <ProductCard
-                      key={listing.id}
-                      listing={listing}
-                      isFavorite={favorites.includes(listing.id)}
-                      onToggleFavorite={handleToggleFavorite}
-                      onOpenDetails={(item) => setSelectedListing(item)}
-                      onOpenWhatsAppOrder={(item) => setWhatsappOrderListing(item)}
-                      badgeColor={settings.verifiedBadgeColor || 'blue'}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                    {paginatedListings.map((listing) => (
+                      <ProductCard
+                        key={listing.id}
+                        listing={listing}
+                        isFavorite={favorites.includes(listing.id)}
+                        onToggleFavorite={handleToggleFavorite}
+                        onOpenDetails={(item) => setSelectedListing(item)}
+                        onOpenWhatsAppOrder={(item) => setWhatsappOrderListing(item)}
+                        onOpenSellerProfile={handleOpenSellerProfile}
+                        onReport={(item) =>
+                          setReportTarget({
+                            type: 'listing',
+                            listing: item,
+                            sellerName: item.sellerName,
+                            sellerPhone: item.sellerPhone,
+                          })
+                        }
+                        badgeColor={settings.verifiedBadgeColor || 'blue'}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {filteredListings.length > pageSize && (
+                    <div className="pt-3">
+                      <MarketplacePagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        onPageChange={(p) => {
+                          setCurrentPage(p);
+                          window.scrollTo({ top: 400, behavior: 'smooth' });
+                        }}
+                        pageSize={pageSize}
+                        onPageSizeChange={(s) => {
+                          setPageSize(s);
+                          setCurrentPage(1);
+                        }}
+                        totalItems={filteredListings.length}
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -671,12 +854,13 @@ export default function App() {
         {activeView === 'sell' && (
           <SellerDashboard
             currentUser={currentUser}
-            userListings={currentUser ? listings.filter((l) => l.sellerId === currentUser.id) : []}
+            userListings={currentUser ? listings.filter((l) => l.sellerId === currentUser.id || (currentUser.phone && l.sellerPhone === currentUser.phone)) : []}
             onAddListing={handleAddListing}
             onUpdateListing={handleUpdateListing}
             onDeleteListing={handleDeleteListing}
             onToggleSold={handleToggleSold}
             onBoostFeatured={handleBoostFeatured}
+            onRenewListing={handleRenewListing}
             onOpenAuth={() => {
               setAuthModalInitialTab('register');
               setIsAuthModalOpen(true);
@@ -763,13 +947,77 @@ export default function App() {
         onToggleFavorite={handleToggleFavorite}
         currentUser={currentUser || undefined}
         badgeColor={settings.verifiedBadgeColor || 'blue'}
+        onOpenSellerProfile={handleOpenSellerProfile}
+        onRenewListing={handleRenewListing}
         onReportListing={(item) => {
-          setPrefillComplaint({
-            category: 'Scam / Fraud Report',
-            targetListingTitle: item.title,
+          setReportTarget({
+            type: 'listing',
+            listing: item,
             sellerName: item.sellerName,
+            sellerPhone: item.sellerPhone,
           });
-          setActiveView('support');
+        }}
+      />
+
+      {/* Seller Profile & Campus Reputation Modal */}
+      <SellerProfileModal
+        isOpen={!!selectedSeller}
+        onClose={() => setSelectedSeller(null)}
+        seller={selectedSeller}
+        allListings={listings}
+        onOpenProductDetails={(item) => {
+          setSelectedSeller(null);
+          setSelectedListing(item);
+        }}
+        onReportSeller={(seller) => {
+          setSelectedSeller(null);
+          setReportTarget({
+            type: 'seller',
+            sellerName: seller.sellerName,
+            sellerPhone: seller.sellerPhone,
+          });
+        }}
+        badgeColor={settings.verifiedBadgeColor || 'blue'}
+      />
+
+      {/* Report & Safety Complaint Modal */}
+      <ReportModal
+        isOpen={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        target={reportTarget || { type: 'listing' }}
+        onSubmit={handleConfirmReport}
+        currentUser={currentUser}
+      />
+
+      {/* Marketplace Notifications & Safety Alerts Center */}
+      <NotificationsModal
+        isOpen={isNotificationsModalOpen}
+        onClose={() => setIsNotificationsModalOpen(false)}
+        notifications={notifications}
+        onMarkAllAsRead={() => {
+          setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+        }}
+        onClearAll={() => setNotifications([])}
+        onSelectNotification={(notif) => {
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n))
+          );
+          if (notif.targetListingId) {
+            const item = listings.find((l) => l.id === notif.targetListingId);
+            if (item) {
+              setIsNotificationsModalOpen(false);
+              setSelectedListing(item);
+            }
+          } else if (notif.linkAction === 'open_support') {
+            setIsNotificationsModalOpen(false);
+            setActiveView('support');
+          } else if (notif.linkAction === 'open_sell') {
+            setIsNotificationsModalOpen(false);
+            handleOpenSell();
+          } else if (notif.linkAction === 'open_subscriptions') {
+            setIsNotificationsModalOpen(false);
+            setActiveView('subscriptions');
+          }
         }}
       />
 

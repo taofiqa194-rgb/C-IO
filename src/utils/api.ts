@@ -18,6 +18,7 @@ import {
   toggleProductListingSold,
   toggleProductListingFeatured,
   recordProductView,
+  renewListingExpiration,
   recordProductInquiry,
   getUserFavorites as fetchUserFavoritesFromFirestore,
   toggleUserFavorite as toggleFavoriteInFirestore,
@@ -453,6 +454,10 @@ export const api = {
 
   async recordView(id: string): Promise<void> {
     await recordProductView(id);
+  },
+
+  async renewListingExpiration(id: string, days = 30): Promise<string> {
+    return await renewListingExpiration(id, days);
   },
 
   // -------------------------------------------------------------

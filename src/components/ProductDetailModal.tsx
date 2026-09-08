@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Listing, User } from '../types';
 import { TikTokVerifiedBadge } from './TikTokVerifiedBadge';
 import { 
@@ -7,15 +7,20 @@ import {
   Heart, 
   Share2, 
   ShieldCheck, 
-  Store, 
   MessageCircle, 
   AlertTriangle, 
   Clock, 
   Copy, 
   Check, 
-  Sparkles 
+  Sparkles,
+  Eye,
+  ExternalLink,
+  Calendar
 } from 'lucide-react';
 import { cleanPhoneNumber, generateWhatsAppOrderMessage } from '../utils/whatsapp';
+import { formatListingExpiration, recordSessionProductView } from '../utils/marketplaceUtils';
+import { SellerProfileData } from './SellerProfileModal';
+import { api } from '../utils/api';
 
 interface ProductDetailModalProps {
   listing: Listing | null;
@@ -25,6 +30,7 @@ interface ProductDetailModalProps {
   onToggleFavorite: (id: string) => void;
   currentUser?: User;
   onReportListing: (listing: Listing) => void;
+  onOpenSellerProfile?: (seller: SellerProfileData) => void;
   badgeColor?: 'blue' | 'red';
 }
 
@@ -36,12 +42,27 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onToggleFavorite,
   currentUser,
   onReportListing,
+  onOpenSellerProfile,
   badgeColor = 'blue',
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
 
+  // Record product view once per session to eliminate redundant Firestore writes
+  useEffect(() => {
+    if (isOpen && listing?.id) {
+      const isNewSessionView = recordSessionProductView(listing.id);
+      if (isNewSessionView) {
+        api.recordView(listing.id).catch(() => {});
+        // Optimistically increment view count on the active object
+        listing.viewsCount = (listing.viewsCount || 0) + 1;
+      }
+    }
+  }, [isOpen, listing?.id]);
+
   if (!isOpen || !listing) return null;
+
+  const expiration = formatListingExpiration(listing);
 
   const handleShare = () => {
     const url = `${window.location.origin}/#item-${listing.id}`;
@@ -64,6 +85,31 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     setTimeout(() => setCopiedMsg(false), 2000);
   };
 
+  const handleOpenSeller = () => {
+    if (onOpenSellerProfile) {
+      onOpenSellerProfile({
+        sellerId: listing.sellerId,
+        sellerName: listing.sellerName,
+        sellerPhone: listing.sellerPhone,
+        sellerRole: listing.sellerRole,
+        sellerMatricVerified: listing.sellerMatricVerified,
+        sellerMatricNumber: listing.sellerMatricNumber,
+        sellerBusinessName: listing.sellerBusinessName,
+        sellerBusinessVerified: listing.sellerBusinessVerified,
+        campusLocation: listing.campusLocation,
+      });
+    }
+  };
+
+  const formattedDate = (() => {
+    try {
+      const d = new Date(listing.createdAt);
+      return isNaN(d.getTime()) ? 'Recently listed' : d.toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return 'Recently listed';
+    }
+  })();
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 sm:p-4 backdrop-blur-xs overflow-y-auto">
       <div 
@@ -72,14 +118,27 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       >
         {/* Sticky Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#E0E0D5] bg-white z-10 shrink-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold text-[#5A5A40] bg-[#E8E8DF] px-3 py-1 rounded-full border border-[#E0E0D5]">
               {listing.category}
             </span>
-            {listing.isFeatured && (
+            {listing.isFeatured && !expiration.isExpired && (
               <span className="inline-flex items-center gap-1 text-xs font-bold text-[#5A5A40] bg-[#5A5A40]/10 px-2.5 py-0.5 rounded-full border border-[#5A5A40]/25">
                 <Sparkles className="h-3 w-3 text-[#5A5A40]" />
-                Featured Listing
+                Featured Deal
+              </span>
+            )}
+            {expiration.isExpired ? (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-white bg-rose-700 px-2.5 py-0.5 rounded-full shadow-xs">
+                Expired
+              </span>
+            ) : expiration.isExpiringSoon ? (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-white bg-amber-700 px-2.5 py-0.5 rounded-full shadow-xs">
+                Expiring Soon ({expiration.daysRemaining} days left)
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-[#7A7A6A] bg-[#F5F5F0] px-2.5 py-0.5 rounded-full border border-[#E0E0D5]">
+                {expiration.daysRemaining} days active
               </span>
             )}
           </div>
@@ -108,106 +167,128 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Scrollable Body */}
-        <div className="overflow-y-auto p-5 space-y-5">
+        {/* Scrollable Content */}
+        <div className="overflow-y-auto p-5 space-y-5 flex-1">
           {/* Main Image */}
-          <div className="relative rounded-2xl overflow-hidden bg-[#F5F5F0] aspect-16/10 border border-[#E0E0D5]">
+          <div className="relative aspect-16/10 w-full rounded-2xl overflow-hidden bg-[#E8E8DF] border border-[#E0E0D5]">
             <img
               src={listing.imageUrl}
               alt={listing.title}
-              className="w-full h-full object-cover"
+              className={`h-full w-full object-contain bg-neutral-900/5 ${
+                expiration.isExpired ? 'grayscale opacity-80' : ''
+              }`}
             />
-            <div className="absolute top-3 right-3">
-              <span className="rounded-full bg-[#2D2D2A]/85 backdrop-blur-xs px-3 py-1 text-xs font-semibold text-white">
+            {listing.condition && (
+              <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs px-3 py-1 rounded-full text-xs font-semibold text-[#5A5A40] border border-[#E0E0D5] shadow-xs">
                 {listing.condition}
-              </span>
-            </div>
-            {listing.isSubscription && (
-              <div className="absolute bottom-3 left-3">
-                <span className="rounded-full bg-[#5A5A40]/90 backdrop-blur-xs px-3.5 py-1 text-xs font-bold text-white flex items-center gap-1.5">
-                  🎟️ Student Subscription: {listing.subscriptionDuration}
-                </span>
               </div>
             )}
           </div>
 
-          {/* Title & Price Header */}
+          {/* Title & Pricing Block */}
           <div>
-            <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#2D2D2A] leading-tight">
-              {listing.title}
-            </h1>
-
-            <div className="mt-2.5 flex items-baseline gap-3">
-              <span className="text-2xl sm:text-3xl font-bold font-serif text-[#5A5A40]">
-                ₦{listing.price.toLocaleString()}
-              </span>
-              {listing.originalPrice && listing.originalPrice > listing.price && (
-                <span className="text-sm text-[#7A7A6A] line-through">
-                  ₦{listing.originalPrice.toLocaleString()}
-                </span>
-              )}
-              {listing.isSubscription && (
-                <span className="text-xs font-semibold text-[#5A5A40] bg-[#E8E8DF] px-2.5 py-0.5 rounded-full border border-[#E0E0D5]">
-                  Plan: {listing.subscriptionDuration}
-                </span>
-              )}
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+              <h2 className="font-serif font-bold text-xl sm:text-2xl text-[#2D2D2A]">
+                {listing.title}
+              </h2>
             </div>
 
-            <div className="mt-3 flex items-center gap-2 text-xs text-[#7A7A6A]">
-              <MapPin className="h-3.5 w-3.5 text-[#7A7A6A] shrink-0" />
-              <span>Campus Pickup/Location: <strong className="text-[#2D2D2A]">{listing.campusLocation}</strong></span>
+            <div className="flex items-center justify-between gap-4 mt-2 flex-wrap">
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-serif font-bold text-[#5A5A40]">
+                  ₦{listing.price.toLocaleString()}
+                </span>
+                {listing.originalPrice && listing.originalPrice > listing.price && (
+                  <span className="text-base text-[#A0A090] line-through">
+                    ₦{listing.originalPrice.toLocaleString()}
+                  </span>
+                )}
+                {listing.isSubscription && (
+                  <span className="text-xs text-[#5A5A40] font-medium bg-[#E8E8DF] px-2 py-0.5 rounded">
+                    /{listing.subscriptionDuration || 'sub'}
+                  </span>
+                )}
+              </div>
+
+              {/* View Count & Listed Date */}
+              <div className="flex items-center gap-3 text-xs text-[#7A7A6A]">
+                <span className="flex items-center gap-1 bg-[#F5F5F0] px-2.5 py-1 rounded-lg border border-[#E0E0D5]">
+                  <Eye className="h-3.5 w-3.5 text-[#5A5A40]" />
+                  <strong>{listing.viewsCount || 0}</strong> views
+                </span>
+                <span className="flex items-center gap-1 bg-[#F5F5F0] px-2.5 py-1 rounded-lg border border-[#E0E0D5]">
+                  <Calendar className="h-3.5 w-3.5 text-[#A0A090]" />
+                  {formattedDate}
+                </span>
+              </div>
+            </div>
+
+            {/* Campus Location */}
+            <div className="flex items-center gap-1.5 text-xs text-[#7A7A6A] mt-2.5">
+              <MapPin className="h-4 w-4 text-[#5A5A40] shrink-0" />
+              <span>{listing.campusLocation}</span>
             </div>
           </div>
 
-          {/* Seller Verified Box */}
-          <div className="rounded-2xl bg-[#F5F5F0] p-4 border border-[#E0E0D5] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-[#E8E8DF] flex items-center justify-center font-serif font-bold text-[#5A5A40] text-base border border-[#E0E0D5]">
-                {listing.sellerName.charAt(0)}
-              </div>
-              <div>
-                {/* TOP OF PERSON'S NAME: TikTok-style Verified Badge */}
-                {listing.sellerRole === 'student' && listing.sellerMatricVerified && (
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <TikTokVerifiedBadge color={badgeColor} size="sm" />
-                    <span className={`text-[11px] font-bold tracking-tight uppercase ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
-                      Verified Student
-                    </span>
-                  </div>
-                )}
-                {listing.sellerRole === 'business' && (
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <TikTokVerifiedBadge color={badgeColor} size="sm" />
-                    <span className={`text-[11px] font-bold tracking-tight uppercase ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
-                      Verified Campus Store
-                    </span>
-                  </div>
-                )}
-                {/* PERSON'S NAME */}
-                <h4 className="font-serif font-bold text-base text-[#2D2D2A]">
-                  {listing.sellerName}
-                </h4>
+          {/* Seller Verified Box with Profile link */}
+          <div className="rounded-2xl bg-[#F5F5F0] p-4 border border-[#E0E0D5] flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div 
+                  onClick={handleOpenSeller}
+                  className="w-12 h-12 rounded-full bg-[#E8E8DF] flex items-center justify-center font-serif font-bold text-[#5A5A40] text-base border border-[#E0E0D5] cursor-pointer hover:bg-[#5A5A40] hover:text-white transition shrink-0"
+                >
+                  {listing.sellerName.charAt(0)}
+                </div>
+                <div>
+                  {/* TOP OF PERSON'S NAME: TikTok-style Verified Badge */}
+                  {listing.sellerRole === 'student' && listing.sellerMatricVerified && (
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <TikTokVerifiedBadge color={badgeColor} size="sm" />
+                      <span className={`text-[11px] font-bold tracking-tight uppercase ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
+                        Verified Student
+                      </span>
+                    </div>
+                  )}
+                  {listing.sellerRole === 'business' && (
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <TikTokVerifiedBadge color={badgeColor} size="sm" />
+                      <span className={`text-[11px] font-bold tracking-tight uppercase ${badgeColor === 'red' ? 'text-[#FE2C55]' : 'text-[#0284c7]'}`}>
+                        Verified Campus Store
+                      </span>
+                    </div>
+                  )}
+                  {/* PERSON'S NAME */}
+                  <h4 
+                    onClick={handleOpenSeller}
+                    className="font-serif font-bold text-base text-[#2D2D2A] cursor-pointer hover:text-[#5A5A40] hover:underline"
+                  >
+                    {listing.sellerName}
+                  </h4>
 
-                <p className="text-xs text-[#7A7A6A] mt-0.5">
-                  {listing.sellerRole === 'student'
-                    ? `Matric: ${listing.sellerMatricNumber || 'Verified Mini Campus Student'} • University of Ilorin Mini Campus`
-                    : listing.sellerBusinessName || 'Mini Campus Vendor'}
-                </p>
+                  <p className="text-xs text-[#7A7A6A] mt-0.5">
+                    {listing.sellerRole === 'student'
+                      ? `Matric: ${listing.sellerMatricNumber || 'Verified Mini Campus Student'} • University of Ilorin Mini Campus`
+                      : listing.sellerBusinessName || 'Mini Campus Vendor'}
+                  </p>
 
-                <div className="flex items-center gap-1 text-[11px] text-[#5A5A40] font-medium mt-1">
-                  <Clock className="w-3 h-3" />
-                  <span>WhatsApp seller: {listing.sellerPhone}</span>
+                  <div className="flex items-center gap-1 text-[11px] text-[#5A5A40] font-medium mt-1">
+                    <Clock className="w-3 h-3" />
+                    <span>WhatsApp: {listing.sellerPhone}</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <button
-              onClick={handleWhatsAppOrder}
-              className="sm:shrink-0 flex items-center justify-center gap-1.5 rounded-full bg-[#25D366] hover:bg-[#20ba5a] text-white font-semibold text-xs py-2.5 px-4 shadow-xs"
-            >
-              <MessageCircle className="h-4 w-4 fill-current" />
-              Chat Seller Now
-            </button>
+              {/* View Full Seller Profile Action */}
+              <button
+                type="button"
+                onClick={handleOpenSeller}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-[#E0E0D5] hover:bg-[#E8E8DF] text-xs font-semibold text-[#2D2D2A] transition shadow-xs"
+              >
+                <span>View Seller Profile</span>
+                <ExternalLink className="h-3 w-3 text-[#7A7A6A]" />
+              </button>
+            </div>
           </div>
 
           {/* Description */}

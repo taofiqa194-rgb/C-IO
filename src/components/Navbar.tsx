@@ -11,7 +11,8 @@ import {
   Headphones,
   SlidersHorizontal,
   LogIn,
-  Download
+  Download,
+  Bell
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -32,6 +33,8 @@ interface NavbarProps {
   siteName?: string;
   officialPhone?: string;
   headerSettings?: SiteHeaderSettings;
+  onOpenNotifications?: () => void;
+  unreadNotificationsCount?: number;
 }
 
 // Minimalist, modern C'IO insignia mark designed for desktop & mobile
@@ -103,6 +106,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   siteName,
   officialPhone,
   headerSettings,
+  onOpenNotifications,
+  unreadNotificationsCount = 0,
 }) => {
   const displayPhone = officialPhone || OFFICIAL_SUPPORT_PHONE;
 
@@ -291,6 +296,27 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </button>
 
+            {/* Notifications Button */}
+            {onOpenNotifications && (
+              <button
+                id="nav-notifications-btn"
+                onClick={onOpenNotifications}
+                className="relative px-3 py-2 rounded-full text-xs font-medium transition flex items-center gap-1.5 border cursor-pointer bg-transparent border-transparent hover:bg-white/15"
+                title="Marketplace Notifications & Safety Alerts"
+              >
+                <Bell className="h-4 w-4" />
+                <span className="hidden xl:inline">Alerts</span>
+                {(unreadNotificationsCount || 0) > 0 && (
+                  <span
+                    className="absolute top-1 right-1 text-white text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center border border-white"
+                    style={{ backgroundColor: '#FE2C55' }}
+                  >
+                    {unreadNotificationsCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* 9. Admin Desk Link */}
             <button
               id="nav-admin-btn"
@@ -447,6 +473,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                 )}
               </button>
+
+              {onOpenNotifications && (
+                <button
+                  id="mobile-nav-notifications-btn"
+                  onClick={onOpenNotifications}
+                  className="relative p-2 rounded-full border border-white/15 bg-white/10 hover:bg-white/20 transition cursor-pointer"
+                  title="Alerts"
+                >
+                  <Bell className="h-4 w-4" />
+                  {(unreadNotificationsCount || 0) > 0 && (
+                    <span
+                      className="absolute -top-1 -right-1 text-white text-[9px] font-bold h-4 w-4 rounded-full flex items-center justify-center border border-white"
+                      style={{ backgroundColor: '#FE2C55' }}
+                    >
+                      {unreadNotificationsCount}
+                    </span>
+                  )}
+                </button>
+              )}
 
               {currentUser ? (
                 <button

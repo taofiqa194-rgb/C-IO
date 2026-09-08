@@ -61,12 +61,24 @@ export interface Listing {
   featuredExpiresAt?: string;
   isSold?: boolean;
   isExpired?: boolean;
+  expiresAt?: string;
   isApproved?: boolean;
   status?: 'active' | 'sold' | 'expired' | 'pending';
   viewsCount: number;
   inquiriesCount: number;
   createdAt: string;
   tags?: string[];
+}
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'deal';
+  createdAt: string;
+  read: boolean;
+  linkAction?: 'open_listing' | 'open_support' | 'open_subscriptions' | 'open_sell' | 'open_admin';
+  targetListingId?: string;
 }
 
 export type SupportCategory =

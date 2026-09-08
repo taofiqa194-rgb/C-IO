@@ -966,6 +966,14 @@ export async function toggleProductListingFeatured(productId: string, isFeatured
 }
 
 export async function recordProductView(productId: string): Promise<void> {
+  // Update local memory and persistent cache immediately
+  if (_productsMemoryCache) {
+    const item = _productsMemoryCache.find((p) => p.id === productId);
+    if (item) {
+      item.viewsCount = (item.viewsCount || 0) + 1;
+      updateProductInLocalCache(item);
+    }
+  }
   try {
     await updateDoc(doc(db, 'products', productId), {
       viewsCount: increment(1),
@@ -973,6 +981,29 @@ export async function recordProductView(productId: string): Promise<void> {
   } catch {
     // Non-critical background metric
   }
+}
+
+export async function renewListingExpiration(productId: string, additionalDays = 30): Promise<string> {
+  const newExpiration = new Date(Date.now() + additionalDays * 24 * 60 * 60 * 1000).toISOString();
+  
+  // Update local memory & persistent cache immediately
+  updateProductInLocalCache({
+    id: productId,
+    expiresAt: newExpiration,
+    isExpired: false,
+    status: 'active',
+  });
+
+  try {
+    await updateDoc(doc(db, 'products', productId), {
+      expiresAt: newExpiration,
+      isExpired: false,
+      status: 'active',
+    });
+  } catch (e) {
+    console.warn('Listing renewal notice:', e);
+  }
+  return newExpiration;
 }
 
 export async function recordProductInquiry(productId: string): Promise<void> {

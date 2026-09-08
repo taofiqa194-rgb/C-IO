@@ -20,9 +20,11 @@ import {
   Loader2,
   Check,
   Zap,
-  Camera
+  Camera,
+  RefreshCw
 } from 'lucide-react';
 import { optimizeImageForUpload, uploadOptimizedImageWithProgress, isJpegImage } from '../utils/imageOptimizer';
+import { formatListingExpiration } from '../utils/marketplaceUtils';
 
 interface SellerDashboardProps {
   currentUser: User | null;
@@ -32,6 +34,7 @@ interface SellerDashboardProps {
   onDeleteListing: (listingId: string) => Promise<void>;
   onToggleSold: (listingId: string) => Promise<void>;
   onBoostFeatured: (listingId: string) => Promise<void>;
+  onRenewListing?: (listingId: string) => Promise<void>;
   onOpenAuth: () => void;
   badgeColor?: 'blue' | 'red';
 }
@@ -55,6 +58,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
   onDeleteListing,
   onToggleSold,
   onBoostFeatured,
+  onRenewListing,
   onOpenAuth,
   badgeColor = 'blue',
 }) => {
@@ -674,85 +678,118 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {userListings.map((item) => (
-                  <div
-                    key={item.id}
-                    id={`seller-item-${item.id}`}
-                    className="flex flex-col rounded-3xl bg-white border border-[#E0E0D5] p-4 shadow-xs hover:border-[#5A5A40]/40 transition"
-                  >
-                    <div className="flex items-start gap-3">
-                      <img
-                        src={item.imageUrl}
-                        alt={item.title}
-                        className="w-20 h-20 rounded-2xl object-cover border border-[#E0E0D5] shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                          {item.isFeatured && (
-                            <span className="text-[10px] bg-[#5A5A40]/10 text-[#5A5A40] font-bold px-2 py-0.5 rounded-full border border-[#5A5A40]/25">
-                              Featured
-                            </span>
-                          )}
-                          {item.isSold ? (
-                            <span className="text-[10px] bg-[#E0E0D5] text-[#7A7A6A] font-bold px-2 py-0.5 rounded-full">
-                              Sold Out
-                            </span>
-                          ) : (
-                            <span className="text-[10px] bg-[#E8E8DF] text-[#5A5A40] font-bold px-2 py-0.5 rounded-full border border-[#E0E0D5]">
-                              Active
-                            </span>
-                          )}
-                        </div>
+                {userListings.map((item) => {
+                  const expiration = formatListingExpiration(item);
+                  return (
+                    <div
+                      key={item.id}
+                      id={`seller-item-${item.id}`}
+                      className="flex flex-col rounded-3xl bg-white border border-[#E0E0D5] p-4 shadow-xs hover:border-[#5A5A40]/40 transition"
+                    >
+                      <div className="flex items-start gap-3">
+                        <img
+                          src={item.imageUrl}
+                          alt={item.title}
+                          className="w-20 h-20 rounded-2xl object-cover border border-[#E0E0D5] shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                            {item.isFeatured && (
+                              <span className="text-[10px] bg-[#5A5A40]/10 text-[#5A5A40] font-bold px-2 py-0.5 rounded-full border border-[#5A5A40]/25">
+                                Featured
+                              </span>
+                            )}
+                            {item.isSold ? (
+                              <span className="text-[10px] bg-[#E0E0D5] text-[#7A7A6A] font-bold px-2 py-0.5 rounded-full">
+                                Sold Out
+                              </span>
+                            ) : expiration.isExpired ? (
+                              <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full border border-rose-200">
+                                Expired
+                              </span>
+                            ) : expiration.isExpiringSoon ? (
+                              <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full border border-amber-200">
+                                Expiring in {expiration.daysRemaining}d
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-[#E8E8DF] text-[#5A5A40] font-bold px-2 py-0.5 rounded-full border border-[#E0E0D5]">
+                                Active • {expiration.daysRemaining}d left
+                              </span>
+                            )}
+                          </div>
 
-                        <h4 className="text-xs font-bold text-[#2D2D2A] line-clamp-1">{item.title}</h4>
-                        <div className="text-sm font-serif font-bold text-[#5A5A40] mt-0.5">
-                          ₦{item.price.toLocaleString()}
-                        </div>
-                        <div className="text-[11px] text-[#7A7A6A] mt-0.5 flex items-center gap-2">
-                          <span>👀 {item.viewsCount} views</span>
-                          <span>💬 {item.inquiriesCount} WhatsApp clicks</span>
+                          <h4 className="text-xs font-bold text-[#2D2D2A] line-clamp-1">{item.title}</h4>
+                          <div className="text-sm font-serif font-bold text-[#5A5A40] mt-0.5">
+                            ₦{item.price.toLocaleString()}
+                          </div>
+                          <div className="text-[11px] text-[#7A7A6A] mt-0.5 flex items-center gap-2">
+                            <span>👀 {item.viewsCount || 0} views</span>
+                            <span>💬 {item.inquiriesCount || 0} WhatsApp clicks</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Actions */}
-                    <div className="mt-3 pt-3 border-t border-[#E0E0D5] flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => onToggleSold(item.id)}
-                          className={`text-xs px-3 py-1.5 rounded-full font-semibold transition ${
-                            item.isSold
-                              ? 'bg-[#F5F5F0] text-[#7A7A6A] hover:bg-[#E8E8DF]'
-                              : 'bg-[#E8E8DF] text-[#5A5A40] hover:bg-[#dedecf] border border-[#E0E0D5]'
-                          }`}
-                        >
-                          {item.isSold ? 'Mark Available' : 'Mark Sold'}
-                        </button>
+                      {/* Actions */}
+                      <div className="mt-3 pt-3 border-t border-[#E0E0D5] flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            onClick={() => onToggleSold(item.id)}
+                            className={`text-xs px-3 py-1.5 rounded-full font-semibold transition ${
+                              item.isSold
+                                ? 'bg-[#F5F5F0] text-[#7A7A6A] hover:bg-[#E8E8DF]'
+                                : 'bg-[#E8E8DF] text-[#5A5A40] hover:bg-[#dedecf] border border-[#E0E0D5]'
+                            }`}
+                          >
+                            {item.isSold ? 'Mark Available' : 'Mark Sold'}
+                          </button>
+
+                          {onRenewListing && (
+                            <button
+                              onClick={() => onRenewListing(item.id)}
+                              className="text-xs px-2.5 py-1.5 rounded-full font-semibold bg-[#F5F5F0] hover:bg-[#E8E8DF] text-[#5A5A40] border border-[#E0E0D5] transition flex items-center gap-1"
+                              title="Extend or renew listing for 30 days"
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                              <span>Renew (+30d)</span>
+                            </button>
+                          )}
+
+                          {!item.isFeatured && !item.isSold && (
+                            <button
+                              onClick={() => onBoostFeatured(item.id)}
+                              className="text-xs px-2.5 py-1.5 rounded-full font-semibold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 transition flex items-center gap-1"
+                              title="Boost to Featured Spotlight"
+                            >
+                              <Sparkles className="h-3 w-3 text-amber-600" />
+                              <span>Boost</span>
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => handleOpenEdit(item)}
+                            className="p-1.5 rounded-full border border-[#E0E0D5] text-[#2D2D2A] hover:bg-[#E8E8DF] transition"
+                            title="Edit this product"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
 
                         <button
-                          onClick={() => handleOpenEdit(item)}
-                          className="p-1.5 rounded-full border border-[#E0E0D5] text-[#2D2D2A] hover:bg-[#E8E8DF] transition"
-                          title="Edit this product"
+                          onClick={() => {
+                            if (confirm(`Delete "${item.title}"?`)) {
+                              onDeleteListing(item.id);
+                            }
+                          }}
+                          className="p-1.5 rounded-full text-[#7A7A6A] hover:text-rose-700 hover:bg-rose-50 transition"
+                          title="Delete listing"
+                          aria-label="Delete listing"
                         >
-                          <Edit3 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-
-                      <button
-                        onClick={() => {
-                          if (confirm(`Delete "${item.title}"?`)) {
-                            onDeleteListing(item.id);
-                          }
-                        }}
-                        className="p-1.5 rounded-full text-[#7A7A6A] hover:text-rose-700 hover:bg-rose-50 transition"
-                        title="Delete listing"
-                        aria-label="Delete listing"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
