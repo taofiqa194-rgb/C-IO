@@ -21,12 +21,116 @@ import {
   query, 
   where, 
   orderBy, 
-  increment 
+  increment,
+  limit
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './config';
 import { User, Listing, ComplaintTicket, PlatformSettings, UserRole, SiteHeaderSettings, DEFAULT_HEADER_SETTINGS } from '../types';
 import { OFFICIAL_SUPPORT_PHONE, OFFICIAL_SUPPORT_WHATSAPP } from '../data/mockData';
+
+// -------------------------------------------------------------
+// CLIENT-SIDE TTL CACHING STORES (Massively reduces Firestore reads)
+// -------------------------------------------------------------
+export const PRODUCTS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+export const USER_PROFILE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+export const SETTINGS_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+export const USERS_LIST_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+
+let _productsMemoryCache: Listing[] | null = null;
+let _productsCacheTimestamp = 0;
+
+const _userProfileMemoryCache = new Map<string, { profile: User; timestamp: number }>();
+
+let _platformSettingsCache: PlatformSettings | null = null;
+let _platformSettingsCacheTimestamp = 0;
+
+let _siteHeaderSettingsCache: SiteHeaderSettings | null = null;
+let _siteHeaderSettingsCacheTimestamp = 0;
+
+let _allUsersCache: User[] | null = null;
+let _allUsersCacheTimestamp = 0;
+
+export function invalidateProductsCache(): void {
+  _productsMemoryCache = null;
+  _productsCacheTimestamp = 0;
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem('cio_products_cache_time');
+    } catch {}
+  }
+}
+
+export function updateProductInLocalCache(updatedProduct: Partial<Listing> & { id: string }): void {
+  if (_productsMemoryCache) {
+    _productsMemoryCache = _productsMemoryCache.map((p) => (p.id === updatedProduct.id ? { ...p, ...updatedProduct } : p));
+  }
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const cached = localStorage.getItem('cio_cached_products');
+      if (cached) {
+        let list: Listing[] = JSON.parse(cached);
+        if (Array.isArray(list)) {
+          list = list.map((p) => (p.id === updatedProduct.id ? { ...p, ...updatedProduct } : p));
+          localStorage.setItem('cio_cached_products', JSON.stringify(list));
+        }
+      }
+    } catch {}
+  }
+}
+
+export function addProductToLocalCache(newProduct: Listing): void {
+  if (_productsMemoryCache) {
+    _productsMemoryCache = [newProduct, ..._productsMemoryCache.filter((p) => p.id !== newProduct.id)];
+  } else {
+    _productsMemoryCache = [newProduct];
+  }
+  _productsCacheTimestamp = Date.now();
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const cached = localStorage.getItem('cio_cached_products');
+      let list: Listing[] = cached ? JSON.parse(cached) : [];
+      if (Array.isArray(list)) {
+        list = [newProduct, ...list.filter((p) => p.id !== newProduct.id)];
+        localStorage.setItem('cio_cached_products', JSON.stringify(list));
+        localStorage.setItem('cio_products_cache_time', Date.now().toString());
+      }
+    } catch {}
+  }
+}
+
+export function removeProductFromLocalCache(productId: string): void {
+  if (_productsMemoryCache) {
+    _productsMemoryCache = _productsMemoryCache.filter((p) => p.id !== productId);
+  }
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const cached = localStorage.getItem('cio_cached_products');
+      if (cached) {
+        let list: Listing[] = JSON.parse(cached);
+        if (Array.isArray(list)) {
+          list = list.filter((p) => p.id !== productId);
+          localStorage.setItem('cio_cached_products', JSON.stringify(list));
+        }
+      }
+    } catch {}
+  }
+}
+
+export function updateCachedUserProfile(userId: string, updates: Partial<User>): void {
+  const existing = _userProfileMemoryCache.get(userId);
+  if (existing) {
+    _userProfileMemoryCache.set(userId, {
+      profile: { ...existing.profile, ...updates },
+      timestamp: Date.now(),
+    });
+  }
+}
+
+export function invalidateAllUsersCache(): void {
+  _allUsersCache = null;
+  _allUsersCacheTimestamp = 0;
+}
 
 export const PRIMARY_ADMIN_EMAIL = 'admin@unilorinmarketplace.com';
 export const OWNER_ADMIN_EMAIL = 'hammedolawumiolawumi@gmail.com';
@@ -271,12 +375,32 @@ export async function updateUserProfile(userId: string, updates: Partial<User>, 
   };
 
   const safePayload = sanitizeForFirestore(payload);
-  await updateDoc(doc(db, 'users', userId), safePayload);
-  const fresh = await getDoc(doc(db, 'users', userId));
-  return fresh.data() as User;
+  try {
+    await updateDoc(doc(db, 'users', userId), safePayload);
+  } catch (err) {
+    if (isFirestoreQuotaError(err)) notifyQuotaExceeded(err);
+    console.warn('updateUserProfile firestore update notice:', err);
+  }
+
+  const existingProfile = _userProfileMemoryCache.get(userId)?.profile;
+  const merged: User = {
+    ...(existingProfile || ({} as User)),
+    id: userId,
+    ...payload,
+  } as User;
+  _userProfileMemoryCache.set(userId, { profile: merged, timestamp: Date.now() });
+  return merged;
 }
 
-export async function getUserProfile(userId: string): Promise<User | null> {
+export async function getUserProfile(userId: string, forceRefresh = false): Promise<User | null> {
+  const now = Date.now();
+  if (!forceRefresh) {
+    const cached = _userProfileMemoryCache.get(userId);
+    if (cached && (now - cached.timestamp < USER_PROFILE_CACHE_TTL)) {
+      return cached.profile;
+    }
+  }
+
   try {
     const userRef = doc(db, 'users', userId);
     const snap = await getDoc(userRef);
@@ -284,7 +408,7 @@ export async function getUserProfile(userId: string): Promise<User | null> {
       // If current auth user matches this ID and is admin, build temporary profile
       const current = auth.currentUser;
       if (current && current.uid === userId && isPrimaryAdminEmail(current.email)) {
-        return {
+        const adminProfile: User = {
           id: current.uid,
           name: current.displayName || 'Campus Marketplace Administrator',
           email: current.email || '',
@@ -298,6 +422,8 @@ export async function getUserProfile(userId: string): Promise<User | null> {
           createdAt: new Date().toISOString().split('T')[0],
           avatarUrl: current.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=Admin`,
         };
+        _userProfileMemoryCache.set(userId, { profile: adminProfile, timestamp: now });
+        return adminProfile;
       }
       return null;
     }
@@ -309,13 +435,19 @@ export async function getUserProfile(userId: string): Promise<User | null> {
         updateDoc(userRef, { isBanned: false, role: 'admin' }).catch(() => {});
       }
     }
+    _userProfileMemoryCache.set(userId, { profile: data, timestamp: now });
     return data;
   } catch (err) {
+    if (isFirestoreQuotaError(err)) notifyQuotaExceeded(err);
     console.warn('getUserProfile offline/fetch fallback:', err);
+    // Return cached if available
+    const cached = _userProfileMemoryCache.get(userId);
+    if (cached) return cached.profile;
+
     const current = auth.currentUser;
     if (current && current.uid === userId) {
       const isPrimary = isPrimaryAdminEmail(current.email);
-      return {
+      const fallbackUser: User = {
         id: current.uid,
         name: current.displayName || (isPrimary ? 'Campus Marketplace Administrator' : 'Campus User'),
         email: current.email || '',
@@ -329,6 +461,8 @@ export async function getUserProfile(userId: string): Promise<User | null> {
         createdAt: new Date().toISOString().split('T')[0],
         avatarUrl: current.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(current.email || 'User')}`,
       };
+      _userProfileMemoryCache.set(userId, { profile: fallbackUser, timestamp: now });
+      return fallbackUser;
     }
     return null;
   }
@@ -393,6 +527,7 @@ export function subscribeToAuth(callback: (user: User | null, isAdmin: boolean) 
       }
 
       const isAdmin = checkIsAdminUser(userProfile, fbUser);
+      _userProfileMemoryCache.set(userProfile.id, { profile: userProfile, timestamp: Date.now() });
       callback(userProfile, isAdmin);
     } catch (e) {
       if (isFirestoreQuotaError(e)) {
@@ -401,6 +536,7 @@ export function subscribeToAuth(callback: (user: User | null, isAdmin: boolean) 
       } else {
         console.warn('Notice fetching user profile in auth state changed:', e);
       }
+      _userProfileMemoryCache.set(fallbackProfile.id, { profile: fallbackProfile, timestamp: Date.now() });
       callback(fallbackProfile, isPrimary);
     }
   });
@@ -414,7 +550,7 @@ export function subscribeToProducts(callback: (products: Listing[]) => void): ()
   const colRef = collection(db, 'products');
   try {
     return onSnapshot(
-      colRef,
+      query(colRef, limit(150)),
       (snapshot) => {
         const list: Listing[] = [];
         snapshot.forEach((docSnap) => {
@@ -422,9 +558,12 @@ export function subscribeToProducts(callback: (products: Listing[]) => void): ()
         });
         // Sort newest first
         list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        _productsMemoryCache = list;
+        _productsCacheTimestamp = Date.now();
         if (typeof localStorage !== 'undefined' && list.length > 0) {
           try {
             localStorage.setItem('cio_cached_products', JSON.stringify(list));
+            localStorage.setItem('cio_products_cache_time', Date.now().toString());
           } catch {}
         }
         callback(list);
@@ -437,6 +576,10 @@ export function subscribeToProducts(callback: (products: Listing[]) => void): ()
           console.warn('Firestore products subscription notice:', error);
         }
         // Emit cached listings so the UI does not stay blank
+        if (_productsMemoryCache && _productsMemoryCache.length > 0) {
+          callback(_productsMemoryCache);
+          return;
+        }
         if (typeof localStorage !== 'undefined') {
           try {
             const cached = localStorage.getItem('cio_cached_products');
@@ -456,17 +599,50 @@ export function subscribeToProducts(callback: (products: Listing[]) => void): ()
   }
 }
 
-export async function fetchProductsOnce(): Promise<Listing[]> {
+export async function fetchProductsOnce(forceRefresh = false): Promise<Listing[]> {
+  const now = Date.now();
+
+  // 1. Instant return from in-memory cache if fresh (< 5 mins)
+  if (!forceRefresh && _productsMemoryCache && (now - _productsCacheTimestamp < PRODUCTS_CACHE_TTL)) {
+    return _productsMemoryCache;
+  }
+
+  // 2. Instant return from localStorage cache if fresh
+  if (!forceRefresh && typeof localStorage !== 'undefined') {
+    try {
+      const timeStr = localStorage.getItem('cio_products_cache_time');
+      const cached = localStorage.getItem('cio_cached_products');
+      if (timeStr && cached) {
+        const cachedTime = Number(timeStr);
+        if (!isNaN(cachedTime) && (now - cachedTime < PRODUCTS_CACHE_TTL)) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            _productsMemoryCache = parsed;
+            _productsCacheTimestamp = cachedTime;
+            return parsed;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Read from Firestore using bounded limit(150)
   try {
-    const snapshot = await getDocs(collection(db, 'products'));
+    const q = query(collection(db, 'products'), limit(150));
+    const snapshot = await getDocs(q);
     const list: Listing[] = [];
     snapshot.forEach((docSnap) => {
       list.push({ ...docSnap.data(), id: docSnap.id } as Listing);
     });
     list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    _productsMemoryCache = list;
+    _productsCacheTimestamp = now;
+
     if (typeof localStorage !== 'undefined' && list.length > 0) {
       try {
         localStorage.setItem('cio_cached_products', JSON.stringify(list));
+        localStorage.setItem('cio_products_cache_time', now.toString());
       } catch {}
     }
     return list;
@@ -476,6 +652,10 @@ export async function fetchProductsOnce(): Promise<Listing[]> {
       console.warn('Firestore read quota reached. Falling back to cached products.');
     } else {
       console.warn('Firestore fetchProductsOnce notice:', err);
+    }
+    // Fallback to memory cache
+    if (_productsMemoryCache && _productsMemoryCache.length > 0) {
+      return _productsMemoryCache;
     }
     // 1. Try local storage cache
     if (typeof localStorage !== 'undefined') {
@@ -621,17 +801,8 @@ export async function createProductListing(
     console.warn('Firestore setDoc notice for new product:', err);
   }
 
-  // Also cache to localStorage so it is immediately visible even in offline/quota-exceeded mode
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const cached = localStorage.getItem('cio_cached_products');
-      const list: Listing[] = cached ? JSON.parse(cached) : [];
-      if (Array.isArray(list)) {
-        list.unshift(safeData);
-        localStorage.setItem('cio_cached_products', JSON.stringify(list));
-      }
-    } catch {}
-  }
+  // Also cache to memory and localStorage so it is immediately visible even in offline/quota-exceeded mode
+  addProductToLocalCache(safeData);
 
   // Also push to local Express backend /api/products
   try {
@@ -762,19 +933,8 @@ export async function updateProductListing(
     }
   }
 
-  // Update local cache
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const cached = localStorage.getItem('cio_cached_products');
-      if (cached) {
-        let list: Listing[] = JSON.parse(cached);
-        if (Array.isArray(list)) {
-          list = list.map((item) => (item.id === productId ? { ...item, ...updates } : item));
-          localStorage.setItem('cio_cached_products', JSON.stringify(list));
-        }
-      }
-    } catch {}
-  }
+  // Update local memory and persistent cache
+  updateProductInLocalCache({ ...updates, id: productId });
 
   try {
     const safePayload = sanitizeForFirestore(updatePayload);
@@ -786,19 +946,8 @@ export async function updateProductListing(
 }
 
 export async function deleteProductListing(productId: string): Promise<void> {
-  // Update local cache
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const cached = localStorage.getItem('cio_cached_products');
-      if (cached) {
-        let list: Listing[] = JSON.parse(cached);
-        if (Array.isArray(list)) {
-          list = list.filter((item) => item.id !== productId);
-          localStorage.setItem('cio_cached_products', JSON.stringify(list));
-        }
-      }
-    } catch {}
-  }
+  // Update local memory and persistent cache
+  removeProductFromLocalCache(productId);
 
   try {
     await deleteDoc(doc(db, 'products', productId));
@@ -981,9 +1130,15 @@ export async function deleteComplaintTicket(ticketId: string): Promise<void> {
 // 5. ADMIN MANAGEMENT & SETTINGS
 // -------------------------------------------------------------
 
-export async function fetchAllUsers(): Promise<User[]> {
+export async function fetchAllUsers(forceRefresh = false): Promise<User[]> {
+  const now = Date.now();
+  if (!forceRefresh && _allUsersCache && (now - _allUsersCacheTimestamp < USERS_LIST_CACHE_TTL)) {
+    return _allUsersCache;
+  }
+
   try {
-    const snapshot = await getDocs(collection(db, 'users'));
+    const q = query(collection(db, 'users'), limit(150));
+    const snapshot = await getDocs(q);
     const users: User[] = [];
     snapshot.forEach((docSnap) => {
       const u = { ...docSnap.data(), id: docSnap.id } as User;
@@ -997,10 +1152,13 @@ export async function fetchAllUsers(): Promise<User[]> {
       }
       users.push(u);
     });
+    _allUsersCache = users;
+    _allUsersCacheTimestamp = now;
     return users;
   } catch (err: any) {
     if (isFirestoreQuotaError(err)) notifyQuotaExceeded(err);
     console.warn('fetchAllUsers fallback to server /api/admin/users:', err);
+    if (_allUsersCache && _allUsersCache.length > 0) return _allUsersCache;
     try {
       const token = typeof localStorage !== 'undefined' ? localStorage.getItem('cio_admin_token') || 'admin' : 'admin';
       const res = await fetch('/api/admin/users', {
@@ -1015,8 +1173,12 @@ export async function fetchAllUsers(): Promise<User[]> {
 }
 
 export async function setStudentMatricVerification(userId: string, isVerified: boolean): Promise<void> {
-  // Update user profile
+  // Update user profile in Firestore
   await updateDoc(doc(db, 'users', userId), { isMatricVerified: isVerified });
+  updateCachedUserProfile(userId, { isMatricVerified: isVerified });
+  if (_allUsersCache) {
+    _allUsersCache = _allUsersCache.map((u) => (u.id === userId ? { ...u, isMatricVerified: isVerified } : u));
+  }
 
   // Synchronously update all listings by this seller
   const q = query(collection(db, 'products'), where('sellerId', '==', userId));
@@ -1025,20 +1187,39 @@ export async function setStudentMatricVerification(userId: string, isVerified: b
     updateDoc(docSnap.ref, { sellerMatricVerified: isVerified })
   );
   await Promise.all(updates);
+
+  // Also update local products cache
+  if (_productsMemoryCache) {
+    _productsMemoryCache = _productsMemoryCache.map((p) => (p.sellerId === userId ? { ...p, sellerMatricVerified: isVerified } : p));
+  }
 }
 
 export async function setAccountBanStatus(userId: string, isBanned: boolean): Promise<void> {
+  const cached = _userProfileMemoryCache.get(userId)?.profile;
+  if (cached && (isPrimaryAdminEmail(cached.email) || cached.role === 'admin' || cached.role === 'super_admin')) {
+    if (isBanned) {
+      throw new Error('The primary administrator account cannot be suspended.');
+    }
+  }
+
   const userRef = doc(db, 'users', userId);
-  const snap = await getDoc(userRef);
-  if (snap.exists()) {
-    const data = snap.data() as User;
-    if (isPrimaryAdminEmail(data.email) || data.role === 'admin' || data.role === 'super_admin') {
-      if (isBanned) {
-        throw new Error('The primary administrator account cannot be suspended.');
+  if (!cached) {
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      const data = snap.data() as User;
+      if (isPrimaryAdminEmail(data.email) || data.role === 'admin' || data.role === 'super_admin') {
+        if (isBanned) {
+          throw new Error('The primary administrator account cannot be suspended.');
+        }
       }
     }
   }
+
   await updateDoc(userRef, { isBanned });
+  updateCachedUserProfile(userId, { isBanned });
+  if (_allUsersCache) {
+    _allUsersCache = _allUsersCache.map((u) => (u.id === userId ? { ...u, isBanned } : u));
+  }
 }
 
 export async function removeUserAccount(userId: string): Promise<void> {
@@ -1051,6 +1232,10 @@ export async function removeUserAccount(userId: string): Promise<void> {
     }
   }
   await deleteDoc(userRef);
+  _userProfileMemoryCache.delete(userId);
+  if (_allUsersCache) {
+    _allUsersCache = _allUsersCache.filter((u) => u.id !== userId);
+  }
 }
 
 /**
@@ -1087,7 +1272,12 @@ export async function syncAndMigrateAdminAccounts(): Promise<void> {
 
 export const restoreAdminAccount = syncAndMigrateAdminAccounts;
 
-export async function getPlatformSettings(): Promise<PlatformSettings> {
+export async function getPlatformSettings(forceRefresh = false): Promise<PlatformSettings> {
+  const now = Date.now();
+  if (!forceRefresh && _platformSettingsCache && (now - _platformSettingsCacheTimestamp < SETTINGS_CACHE_TTL)) {
+    return _platformSettingsCache;
+  }
+
   const defaultSettings: PlatformSettings = {
     siteName: "C'IO — University of Ilorin Mini Campus Marketplace",
     officialPhone: OFFICIAL_SUPPORT_PHONE,
@@ -1108,15 +1298,20 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     const snap = await getDoc(settingDocRef);
 
     if (snap.exists()) {
-      return snap.data() as PlatformSettings;
+      const data = snap.data() as PlatformSettings;
+      _platformSettingsCache = data;
+      _platformSettingsCacheTimestamp = now;
+      return data;
     }
 
     await setDoc(settingDocRef, defaultSettings).catch(() => {});
+    _platformSettingsCache = defaultSettings;
+    _platformSettingsCacheTimestamp = now;
     return defaultSettings;
   } catch (err: any) {
     if (isFirestoreQuotaError(err)) notifyQuotaExceeded(err);
     console.warn('getPlatformSettings fallback to defaults:', err);
-    return defaultSettings;
+    return _platformSettingsCache || defaultSettings;
   }
 }
 
@@ -1124,6 +1319,10 @@ export async function updatePlatformSettings(settings: Partial<PlatformSettings>
   try {
     const settingDocRef = doc(db, 'settings', 'global');
     await setDoc(settingDocRef, settings, { merge: true });
+    if (_platformSettingsCache) {
+      _platformSettingsCache = { ..._platformSettingsCache, ...settings };
+      _platformSettingsCacheTimestamp = Date.now();
+    }
   } catch (err) {
     if (isFirestoreQuotaError(err)) notifyQuotaExceeded(err);
     console.warn('updatePlatformSettings notice:', err);
@@ -1131,14 +1330,19 @@ export async function updatePlatformSettings(settings: Partial<PlatformSettings>
 }
 
 // 6. WEBSITE SETTINGS (HEADER & BRANDING)
-export async function getSiteHeaderSettings(): Promise<SiteHeaderSettings> {
+export async function getSiteHeaderSettings(forceRefresh = false): Promise<SiteHeaderSettings> {
+  const now = Date.now();
+  if (!forceRefresh && _siteHeaderSettingsCache && (now - _siteHeaderSettingsCacheTimestamp < SETTINGS_CACHE_TTL)) {
+    return _siteHeaderSettingsCache;
+  }
+
   try {
     const headerDocRef = doc(db, 'siteSettings', 'header');
     const snap = await getDoc(headerDocRef);
 
     if (snap.exists()) {
       const data = snap.data();
-      return {
+      const merged: SiteHeaderSettings = {
         ...DEFAULT_HEADER_SETTINGS,
         ...data,
         navMenuNames: {
@@ -1146,17 +1350,22 @@ export async function getSiteHeaderSettings(): Promise<SiteHeaderSettings> {
           ...(data.navMenuNames || {}),
         },
       };
+      _siteHeaderSettingsCache = merged;
+      _siteHeaderSettingsCacheTimestamp = now;
+      return merged;
     }
 
     // Initialize document in Firestore if not existing
     await setDoc(headerDocRef, sanitizeForFirestore(DEFAULT_HEADER_SETTINGS)).catch((e) => {
       console.warn('Could not bootstrap default header settings in Firestore:', e);
     });
+    _siteHeaderSettingsCache = DEFAULT_HEADER_SETTINGS;
+    _siteHeaderSettingsCacheTimestamp = now;
     return DEFAULT_HEADER_SETTINGS;
   } catch (err) {
     if (isFirestoreQuotaError(err)) notifyQuotaExceeded(err);
     console.warn('Error reading header settings from Firestore (serving defaults):', err);
-    return DEFAULT_HEADER_SETTINGS;
+    return _siteHeaderSettingsCache || DEFAULT_HEADER_SETTINGS;
   }
 }
 
@@ -1176,7 +1385,13 @@ export async function updateSiteHeaderSettings(
     if (isFirestoreQuotaError(err)) notifyQuotaExceeded(err);
     console.warn('updateSiteHeaderSettings notice:', err);
   }
-  return await getSiteHeaderSettings();
+  const merged: SiteHeaderSettings = {
+    ...(_siteHeaderSettingsCache || DEFAULT_HEADER_SETTINGS),
+    ...settings,
+  };
+  _siteHeaderSettingsCache = merged;
+  _siteHeaderSettingsCacheTimestamp = Date.now();
+  return merged;
 }
 
 export async function resetSiteHeaderSettings(adminEmail?: string): Promise<SiteHeaderSettings> {
@@ -1192,6 +1407,8 @@ export async function resetSiteHeaderSettings(adminEmail?: string): Promise<Site
     if (isFirestoreQuotaError(err)) notifyQuotaExceeded(err);
     console.warn('resetSiteHeaderSettings notice:', err);
   }
+  _siteHeaderSettingsCache = DEFAULT_HEADER_SETTINGS;
+  _siteHeaderSettingsCacheTimestamp = Date.now();
   return DEFAULT_HEADER_SETTINGS;
 }
 

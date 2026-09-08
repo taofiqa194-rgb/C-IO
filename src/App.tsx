@@ -178,30 +178,29 @@ export default function App() {
     return () => unsubscribeHeader();
   }, []);
 
-  // Load backend data
-  const loadData = useCallback(async () => {
-    try {
-      const prods = await api.getProducts();
-      if (prods && prods.length > 0) {
-        setListings(prods);
+  // Load backend data efficiently
+  const loadData = useCallback(async (forceRefresh = false) => {
+    // If listings are already populated, don't duplicate the snapshot read
+    if (forceRefresh || listings.length === 0) {
+      try {
+        const prods = await api.getProducts(forceRefresh);
+        if (prods && prods.length > 0) {
+          setListings(prods);
+        }
+      } catch (e) {
+        console.warn('Listing load notice (serving cached/defaults):', e);
       }
-    } catch (e) {
-      console.warn('Listing load notice (serving cached/defaults):', e);
     }
 
-    // Public platform & header settings (loaded for all visitors)
+    // Public platform settings (cached in memory with TTL)
     try {
-      const [fetchedSettings, fetchedHeaderSettings] = await Promise.all([
-        api.getSettings().catch(() => null),
-        api.getHeaderSettings().catch(() => null),
-      ]);
+      const fetchedSettings = await api.getSettings().catch(() => null);
       if (fetchedSettings) setSettings(fetchedSettings);
-      if (fetchedHeaderSettings) setHeaderSettings(fetchedHeaderSettings);
     } catch (e) {
       console.warn('Could not load public settings:', e);
     }
 
-    // Check current user session
+    // Check current user session (cached in memory with TTL)
     try {
       const userRes = await api.checkUserAuth().catch(() => ({ authenticated: false, user: null }));
       if (userRes && userRes.authenticated && userRes.user) {
@@ -223,13 +222,13 @@ export default function App() {
           api.getUsers().catch(() => []),
           api.getReports().catch(() => []),
         ]);
-        if (fetchedUsers) setUsers(fetchedUsers);
-        if (fetchedReports) setComplaints(fetchedReports);
+        if (fetchedUsers && fetchedUsers.length > 0) setUsers(fetchedUsers);
+        if (fetchedReports && fetchedReports.length > 0) setComplaints(fetchedReports);
       }
     } catch {
       setIsAdminAuthenticated(false);
     }
-  }, []);
+  }, [listings.length]);
 
   useEffect(() => {
     loadData();
@@ -262,16 +261,16 @@ export default function App() {
 
   // Add listing
   const handleAddListing = async (newListingData: Partial<Listing>) => {
-    await api.createProduct(newListingData);
-    const updated = await api.getProducts();
-    setListings(updated);
+    const created = await api.createProduct(newListingData);
+    setListings((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
   };
 
   // Update listing
   const handleUpdateListing = async (listingId: string, updatedData: Partial<Listing>) => {
     await api.updateProduct(listingId, updatedData);
-    const updated = await api.getProducts();
-    setListings(updated);
+    setListings((prev) =>
+      prev.map((item) => (item.id === listingId ? { ...item, ...updatedData } : item))
+    );
   };
 
   // Delete listing

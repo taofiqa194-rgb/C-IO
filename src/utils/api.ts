@@ -37,8 +37,12 @@ import {
 } from '../firebase/services';
 import { DEFAULT_CAMPUS_LISTINGS } from '../data/mockData';
 import { auth, db } from '../firebase/config';
-import { collection, getDocs, query, where, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc, setDoc, limit } from 'firebase/firestore';
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+
+let _reportsCache: ComplaintTicket[] | null = null;
+let _reportsCacheTimestamp = 0;
+const REPORTS_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
 
 export const api = {
   // -------------------------------------------------------------
@@ -399,9 +403,9 @@ export const api = {
   // -------------------------------------------------------------
   // Marketplace Products
   // -------------------------------------------------------------
-  async getProducts(): Promise<Listing[]> {
+  async getProducts(forceRefresh = false): Promise<Listing[]> {
     try {
-      const prods = await fetchProductsOnce();
+      const prods = await fetchProductsOnce(forceRefresh);
       if (prods && prods.length > 0) {
         return prods;
       }
@@ -427,12 +431,6 @@ export const api = {
 
   async updateProduct(id: string, productData: Partial<Listing>, _isAdmin = false, newImageFile?: File): Promise<Listing> {
     await updateProductListing(id, productData, newImageFile);
-    try {
-      const snap = await getDoc(doc(db, 'products', id));
-      if (snap.exists()) {
-        return { ...snap.data(), id: snap.id } as Listing;
-      }
-    } catch {}
     return { id, ...productData } as Listing;
   },
 
@@ -446,12 +444,6 @@ export const api = {
     _isAdmin = false
   ): Promise<Listing> {
     await updateProductListing(id, statusData);
-    try {
-      const snap = await getDoc(doc(db, 'products', id));
-      if (snap.exists()) {
-        return { ...snap.data(), id: snap.id } as Listing;
-      }
-    } catch {}
     return { id, ...statusData } as Listing;
   },
 
@@ -477,35 +469,50 @@ export const api = {
   // -------------------------------------------------------------
   // Reports / Support Complaints
   // -------------------------------------------------------------
-  async getReports(_isAdmin = false): Promise<ComplaintTicket[]> {
+  async getReports(_isAdmin = false, forceRefresh = false): Promise<ComplaintTicket[]> {
+    const now = Date.now();
+    if (!forceRefresh && _reportsCache && (now - _reportsCacheTimestamp < REPORTS_CACHE_TTL)) {
+      return _reportsCache;
+    }
+
     try {
-      const snapshot = await getDocs(collection(db, 'complaints'));
+      const q = query(collection(db, 'complaints'), limit(100));
+      const snapshot = await getDocs(q);
       const tickets: ComplaintTicket[] = [];
       snapshot.forEach((d) => tickets.push({ ...d.data(), id: d.id } as ComplaintTicket));
       tickets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      _reportsCache = tickets;
+      _reportsCacheTimestamp = now;
       return tickets;
     } catch (err) {
       if (isFirestoreQuotaError(err)) notifyQuotaExceeded(err);
       console.warn('Failed to load reports from Firestore:', err);
-      return [];
+      return _reportsCache || [];
     }
   },
 
   async submitReport(reportData: Partial<ComplaintTicket>): Promise<ComplaintTicket> {
-    return await submitSupportComplaint(reportData);
+    const ticket = await submitSupportComplaint(reportData);
+    if (_reportsCache) {
+      _reportsCache = [ticket, ..._reportsCache.filter((t) => t.id !== ticket.id)];
+    }
+    return ticket;
   },
 
   async resolveReport(id: string, reply: string, status: ComplaintTicket['status']): Promise<ComplaintTicket> {
     await replyToComplaint(id, reply, status);
-    try {
-      const snap = await getDoc(doc(db, 'complaints', id));
-      if (snap.exists()) return { ...snap.data(), id: snap.id } as ComplaintTicket;
-    } catch {}
-    return { id, adminReply: reply, status, adminRepliedAt: new Date().toISOString() } as unknown as ComplaintTicket;
+    const updatedTicket = { id, adminReply: reply, status, adminRepliedAt: new Date().toISOString() } as unknown as ComplaintTicket;
+    if (_reportsCache) {
+      _reportsCache = _reportsCache.map((t) => (t.id === id ? { ...t, adminReply: reply, status, adminRepliedAt: updatedTicket.adminRepliedAt } : t));
+    }
+    return updatedTicket;
   },
 
   async deleteReport(id: string): Promise<void> {
     await deleteComplaintTicket(id);
+    if (_reportsCache) {
+      _reportsCache = _reportsCache.filter((t) => t.id !== id);
+    }
   },
 
   // -------------------------------------------------------------
