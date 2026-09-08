@@ -7,6 +7,7 @@ import { isPrimaryAdminEmail } from '../firebase/services';
 import { TikTokVerifiedBadge } from './TikTokVerifiedBadge';
 import { AdminAnnouncementSettings } from './AdminAnnouncementSettings';
 import { AdminWebsiteSettings } from './AdminWebsiteSettings';
+import { FirestoreQuotaBanner } from './FirestoreQuotaBanner';
 import { 
   ShieldCheck, 
   Users, 
@@ -459,6 +460,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 py-6">
+      {/* Firestore Quota Banner */}
+      <div className="mb-4">
+        <FirestoreQuotaBanner />
+      </div>
+
       {/* Header bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-[#2D2D2A] text-white p-6 rounded-3xl shadow-xl border border-[#5A5A40]/30 mb-8">
         <div>

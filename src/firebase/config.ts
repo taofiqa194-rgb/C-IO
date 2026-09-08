@@ -49,6 +49,18 @@ export async function testFirebaseConnection(): Promise<boolean> {
   } catch (error: any) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.warn('Firebase client is offline or network restricted.');
+    } else if (
+      error &&
+      (error.code === 'resource-exhausted' ||
+        (error.message && (error.message.includes('Quota') || error.message.includes('quota') || error.message.includes('Free daily read units'))))
+    ) {
+      console.warn('Firebase connection test: Daily read quota exceeded for project.');
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('cio_quota_exceeded_timestamp', Date.now().toString());
+        } catch {}
+        window.dispatchEvent(new CustomEvent('cio_firestore_quota_exceeded', { detail: error }));
+      }
     }
     // Document might not exist (which still means connection succeeded)
     return true;

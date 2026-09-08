@@ -32,6 +32,8 @@ import { ImageRequirementsModal } from './components/ImageRequirementsModal';
 import { usePWAInstall } from './utils/usePWAInstall';
 import { PWAPromptModal } from './components/PWAPromptModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { FirestoreQuotaBanner } from './components/FirestoreQuotaBanner';
+import { DEFAULT_CAMPUS_LISTINGS } from './data/mockData';
 import { 
   Sparkles, 
   ShoppingBag, 
@@ -51,7 +53,20 @@ export default function App() {
   // Main Data States
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
-  const [listings, setListings] = useState<Listing[]>([]);
+  const [listings, setListings] = useState<Listing[]>(() => {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('cio_cached_products');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch {}
+    }
+    return DEFAULT_CAMPUS_LISTINGS;
+  });
   const [users, setUsers] = useState<User[]>([]);
   const [complaints, setComplaints] = useState<ComplaintTicket[]>([]);
   const [settings, setSettings] = useState<PlatformSettings>({
@@ -119,7 +134,7 @@ export default function App() {
     try {
       localStorage.setItem('cio_favorites', JSON.stringify(favorites));
     } catch (e) {
-      console.error(e);
+      console.warn('Local favorites persistence notice:', e);
     }
   }, [favorites]);
 
@@ -139,7 +154,9 @@ export default function App() {
     testFirebaseConnection();
     restoreAdminAccount().catch((err) => console.warn('Could not auto-restore admin account:', err));
     const unsubscribe = subscribeToProducts((realtimeProducts) => {
-      setListings(realtimeProducts);
+      if (realtimeProducts && realtimeProducts.length > 0) {
+        setListings(realtimeProducts);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -165,42 +182,52 @@ export default function App() {
   const loadData = useCallback(async () => {
     try {
       const prods = await api.getProducts();
-      setListings(prods);
-
-      // Public platform & header settings (loaded for all visitors)
-      try {
-        const [fetchedSettings, fetchedHeaderSettings] = await Promise.all([
-          api.getSettings(),
-          api.getHeaderSettings(),
-        ]);
-        if (fetchedSettings) setSettings(fetchedSettings);
-        if (fetchedHeaderSettings) setHeaderSettings(fetchedHeaderSettings);
-      } catch (e) {
-        console.warn('Could not load public settings:', e);
+      if (prods && prods.length > 0) {
+        setListings(prods);
       }
+    } catch (e) {
+      console.warn('Listing load notice (serving cached/defaults):', e);
+    }
 
-      // Check current user session
-      const userRes = await api.checkUserAuth();
-      if (userRes.authenticated && userRes.user) {
+    // Public platform & header settings (loaded for all visitors)
+    try {
+      const [fetchedSettings, fetchedHeaderSettings] = await Promise.all([
+        api.getSettings().catch(() => null),
+        api.getHeaderSettings().catch(() => null),
+      ]);
+      if (fetchedSettings) setSettings(fetchedSettings);
+      if (fetchedHeaderSettings) setHeaderSettings(fetchedHeaderSettings);
+    } catch (e) {
+      console.warn('Could not load public settings:', e);
+    }
+
+    // Check current user session
+    try {
+      const userRes = await api.checkUserAuth().catch(() => ({ authenticated: false, user: null }));
+      if (userRes && userRes.authenticated && userRes.user) {
         setCurrentUser(userRes.user);
       } else {
         setCurrentUser(null);
       }
+    } catch {
+      setCurrentUser(null);
+    }
 
-      // Check admin session
-      const adminRes = await api.checkAdminAuth();
-      setIsAdminAuthenticated(adminRes.authenticated);
+    // Check admin session
+    try {
+      const adminRes = await api.checkAdminAuth().catch(() => ({ authenticated: false }));
+      setIsAdminAuthenticated(Boolean(adminRes?.authenticated));
 
-      if (adminRes.authenticated) {
+      if (adminRes?.authenticated) {
         const [fetchedUsers, fetchedReports] = await Promise.all([
-          api.getUsers(),
-          api.getReports(),
+          api.getUsers().catch(() => []),
+          api.getReports().catch(() => []),
         ]);
-        setUsers(fetchedUsers);
-        setComplaints(fetchedReports);
+        if (fetchedUsers) setUsers(fetchedUsers);
+        if (fetchedReports) setComplaints(fetchedReports);
       }
-    } catch (err) {
-      console.error('Failed to load initial data:', err);
+    } catch {
+      setIsAdminAuthenticated(false);
     }
   }, []);
 
@@ -386,6 +413,9 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1">
+        {/* Firestore Daily Quota Status Banner */}
+        <FirestoreQuotaBanner />
+
         {/* Verified Campus Announcement Banner */}
         <AnnouncementSection
           settings={settings}
